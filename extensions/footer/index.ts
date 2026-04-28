@@ -11,6 +11,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getIcons, getThinkingText, GITHUB_ICON, GITHUB_ICON_ASCII, hasNerdFonts, strWidth } from "../shared/icons.ts";
 import { BorderlessTopEditor } from "./borderless-top-editor.ts";
+import { loadSettings } from "../shared/settings.ts";
 
 // ── ANSI helpers ─────────────────────────────────────────────────────────────
 
@@ -177,7 +178,11 @@ function bgBorderLine(borderFn: (s: string) => string, content: string, width: n
 let _sessionStart: number = Date.now();
 
 export default function (pi: ExtensionAPI) {
+
   pi.on("session_start", (event: any, ctx: ExtensionContext) => {
+    const settings = loadSettings();
+    if (!settings.showFooter) return;
+
     if (event.reason === "startup" || event.reason === "new" || event.reason === "fork") {
       // Try to get actual session creation time from first entry
       const entries = ctx.sessionManager.getEntries();
@@ -190,21 +195,24 @@ export default function (pi: ExtensionAPI) {
     let gitState: GitState | null = null;
     let gitAvailable = true;
 
-    async function fetchGit() {
-      if (!gitAvailable) return;
+    // Returns true if the git state changed (so callers know whether to re-render)
+    async function fetchGit(): Promise<boolean> {
+      if (!gitAvailable) return false;
+      const prev = JSON.stringify(gitState);
       try {
         const [statusR, remoteR] = await Promise.all([
           pi.exec("git", ["status", "--porcelain=v2", "--branch"], { cwd: ctx.cwd, timeout: 3000 }),
           pi.exec("git", ["remote", "get-url", "origin"], { cwd: ctx.cwd, timeout: 3000 }),
         ]);
-        if (statusR.code === 128) { gitAvailable = false; return; }
-        if (statusR.code !== 0) { gitState = null; return; }
+        if (statusR.code === 128) { gitAvailable = false; return prev !== "null"; }
+        if (statusR.code !== 0) { gitState = null; return prev !== "null"; }
         const state = parseGitStatus(statusR.stdout);
         state.isGitHub = remoteR.code === 0 && remoteR.stdout.includes("github.com");
         gitState = state;
       } catch {
         gitState = null;
       }
+      return JSON.stringify(gitState) !== prev;
     }
 
     fetchGit();
@@ -224,7 +232,16 @@ export default function (pi: ExtensionAPI) {
     // ── ABOVE EDITOR: stats widget ──────────────────────────────────────────
 
     ctx.ui.setWidget("stats-bar", (tui: any, theme: any) => {
-      const timer = setInterval(() => tui.requestRender(), 30_000);
+      // Track the last rendered minute so we only re-render when it actually changes
+      let lastRenderedMinute = -1;
+      const timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+        const currentMinute = Math.floor(elapsed / 60);
+        if (currentMinute !== lastRenderedMinute) {
+          lastRenderedMinute = currentMinute;
+          tui.requestRender();
+        }
+      }, 30_000);
 
       return {
         dispose() { clearInterval(timer); },
@@ -392,8 +409,8 @@ export default function (pi: ExtensionAPI) {
 
     ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
       const gitTimer = setInterval(async () => {
-        await fetchGit();
-        tui.requestRender();
+        const changed = await fetchGit();
+        if (changed) tui.requestRender();
       }, 5000);
       const unsub = footerData.onBranchChange(() => tui.requestRender());
 
