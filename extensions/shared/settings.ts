@@ -2,7 +2,7 @@
  * Settings loader + safe color helpers for beautiful-pi.
  */
 
-const { readFileSync, writeFileSync, existsSync, mkdirSync } = require("node:fs");
+const { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -58,9 +58,26 @@ function loadUserOverrides(): Partial<BeautifulPiSettings> {
   }
 }
 
+// ── Settings cache ────────────────────────────────────────────────────────────
+
+let _cachedSettings: BeautifulPiSettings | null = null;
+let _cacheTimestamp = 0;
+const CACHE_TTL_MS = 500; // 500ms TTL — fast enough for /reload, cheap enough for renders
+
+export function invalidateSettingsCache(): void {
+  _cachedSettings = null;
+  _cacheTimestamp = 0;
+}
+
 export function loadSettings(): BeautifulPiSettings {
+  const now = Date.now();
+  if (_cachedSettings && now - _cacheTimestamp < CACHE_TTL_MS) {
+    return _cachedSettings;
+  }
   const user = loadUserOverrides();
-  return { ...DEFAULTS, ...user };
+  _cachedSettings = { ...DEFAULTS, ...user };
+  _cacheTimestamp = now;
+  return _cachedSettings;
 }
 
 // ── Save ──────────────────────────────────────────────────────────────────────
@@ -74,8 +91,13 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
     }
   }
 
-  // Skip writing an empty file when everything matches defaults
-  if (Object.keys(toSave).length === 0) return;
+  // When everything matches defaults, delete the stale file (if any) instead
+  // of leaving it on disk where it would be re-read after /reload.
+  if (Object.keys(toSave).length === 0) {
+    try { unlinkSync(USER_SETTINGS_PATH); } catch { /* file may not exist */ }
+    invalidateSettingsCache();
+    return;
+  }
 
   try {
     mkdirSync(dirname(USER_SETTINGS_PATH), { recursive: true });
@@ -83,6 +105,7 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
   } catch {
     // Silently ignore permission or I/O errors (e.g. read-only filesystem)
   }
+  invalidateSettingsCache();
 }
 
 // ── Safe color helpers ────────────────────────────────────────────────────────
