@@ -1,0 +1,10 @@
+{
+  "userRailColor": "syntaxKeyword",
+  "thinkingRailColor": "mdHeading",
+  "thinkingTextColor": "muted",
+  "toolRailColor": "success",
+  "indentLevel": 4,
+  "toolsOneLine": true,
+  "showBanner": true,
+  "showFooter": true
+}
