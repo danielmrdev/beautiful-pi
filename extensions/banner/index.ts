@@ -8,6 +8,7 @@
 
 import type { ExtensionAPI, ExtensionContext, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 import { strWidth } from "../shared/icons.ts";
+import { loadSettings } from "../shared/settings.ts";
 
 const { readFileSync, existsSync, readdirSync } = require("node:fs");
 const { join } = require("node:path");
@@ -294,13 +295,17 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
 		bannerCtx = ctx;
 		bannerVisible = true;
-		showBanner(ctx);
+		if (loadSettings().showBanner) {
+			showBanner(ctx);
+		}
 	});
 
 	pi.on("session_switch", async (_event, ctx: ExtensionContext) => {
 		bannerCtx = ctx;
 		bannerVisible = true;
-		showBanner(ctx);
+		if (loadSettings().showBanner) {
+			showBanner(ctx);
+		}
 	});
 
 	pi.on("input", async () => {
