@@ -1,0 +1,11 @@
+{
+  "name": "beautiful-pi",
+  "version": "0.1.0",
+  "description": "Beautiful UI extensions for pi — footer, banner, themes, Nerd Fonts support",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "themes": ["./themes"]
+  }
+}
