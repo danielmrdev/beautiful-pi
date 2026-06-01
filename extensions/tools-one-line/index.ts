@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadSettings } from "../shared/settings.ts";
 import { registerBashTool }  from "./register-bash.ts";
 import { registerReadTool }  from "./register-read.ts";

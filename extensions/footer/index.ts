@@ -8,7 +8,7 @@
  *   ~/projects/my-project  ⎇ main ↑2 ↓1 +3 !2 ?1
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getIcons, getThinkingText, GITHUB_ICON, GITHUB_ICON_ASCII, hasNerdFonts, strWidth } from "../shared/icons.ts";
 import { BorderlessTopEditor } from "./borderless-top-editor.ts";
 import { loadSettings } from "../shared/settings.ts";

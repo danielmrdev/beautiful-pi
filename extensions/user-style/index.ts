@@ -3,9 +3,9 @@
  * consistent with the agent rail in assistant-style.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { UserMessageComponent } from "@mariozechner/pi-coding-agent";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────

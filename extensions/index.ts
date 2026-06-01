@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import bannerExtension from "./banner/index.ts";
 import footerExtension from "./footer/index.ts";
 import toolsOneLineExtension from "./tools-one-line/index.ts";

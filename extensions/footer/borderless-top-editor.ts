@@ -1,4 +1,4 @@
-import { CustomEditor } from "@mariozechner/pi-coding-agent";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
 
 /**
  * CustomEditor that removes the top border line so that the

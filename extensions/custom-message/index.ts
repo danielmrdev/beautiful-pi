@@ -11,9 +11,9 @@
  * Rail colour is driven by settings.customMessageRailColor (default: borderMuted).
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { CustomMessageComponent } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CustomMessageComponent } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────

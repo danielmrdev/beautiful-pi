@@ -2,8 +2,8 @@
  * /beautiful-pi command — SettingsList TUI for configuring the package.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { SettingsList } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SettingsList } from "@earendil-works/pi-tui";
 import {
   loadSettings,
   saveSettings,

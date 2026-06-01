@@ -6,7 +6,7 @@
  * same ┃ rail + spinner / ✓ / ✕ style as the explicitly registered tools.
  */
 
-import { ToolExecutionComponent } from "@mariozechner/pi-coding-agent";
+import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { NullWidget, renderLine, type Ctx, type Theme } from "./shared.ts";
 
 // Tools that beautiful-pi registers explicitly — leave their renderers alone.

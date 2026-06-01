@@ -10,8 +10,8 @@
  * Falls back to simple truncation if the LLM call fails.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { completeSimple } from "@mariozechner/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai";
 import { loadSettings } from "../shared/settings.ts";
 
 // ── Fallback: simple truncation ───────────────────────────────────────────────

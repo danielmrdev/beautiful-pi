@@ -4,9 +4,9 @@
  *  - Thinking blocks: thinkingText-coloured ┃ left rail, italic content
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { AssistantMessageComponent, CustomMessageComponent, SkillInvocationMessageComponent } from "@mariozechner/pi-coding-agent";
-import { Markdown, Spacer, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { AssistantMessageComponent, CustomMessageComponent, SkillInvocationMessageComponent } from "@earendil-works/pi-coding-agent";
+import { Markdown, Spacer, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 import { hasNerdFonts } from "../shared/icons.ts";
 

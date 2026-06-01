@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { absPath, readRange, registerTool } from "./shared.ts";
 
 export function registerReadTool(pi: ExtensionAPI): void {
