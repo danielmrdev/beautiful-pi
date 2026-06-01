@@ -4,13 +4,17 @@ import footerExtension from "./footer/index.ts";
 import toolsOneLineExtension from "./tools-one-line/index.ts";
 import assistantStyleExtension from "./assistant-style/index.ts";
 import userStyleExtension from "./user-style/index.ts";
+import customMessageExtension from "./custom-message/index.ts";
 import settingsExtension from "./settings/index.ts";
+import sessionTitleExtension from "./session-title/index.ts";
 
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /beautiful-pi first
+  sessionTitleExtension(pi);
   bannerExtension(pi);
   footerExtension(pi);
   toolsOneLineExtension(pi);
   assistantStyleExtension(pi);
   userStyleExtension(pi);
+  customMessageExtension(pi);
 }

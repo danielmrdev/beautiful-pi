@@ -1,10 +1,16 @@
 {
-  "userRailColor": "syntaxKeyword",
+  "agentRailColor": "accent",
+  "userRailColor": "mdLink",
   "thinkingRailColor": "mdHeading",
   "thinkingTextColor": "muted",
+  "dimThinkingText": true,
   "toolRailColor": "success",
+  "dimToolsText": true,
+  "customMessageRailColor": "borderMuted",
+  "dimCustomMessages": true,
   "indentLevel": 4,
   "toolsOneLine": true,
   "showBanner": true,
-  "showFooter": true
+  "showFooter": true,
+  "sessionTitle": true
 }

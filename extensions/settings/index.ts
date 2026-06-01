@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { SettingsList, Container } from "@mariozechner/pi-tui";
+import { SettingsList } from "@mariozechner/pi-tui";
 import {
   loadSettings,
   saveSettings,
@@ -11,7 +11,9 @@ import {
 } from "../shared/settings.ts";
 
 const COLOR_OPTIONS = [
-  "accent", "muted", "dim", "text", "thinkingText",
+  "accent",
+  "border", "borderAccent", "borderMuted",
+  "muted", "dim", "text", "thinkingText",
   "success", "error", "warning",
   "syntaxKeyword", "syntaxFunction", "syntaxString", "syntaxType",
   "mdHeading", "mdLink", "mdCode",
@@ -19,86 +21,126 @@ const COLOR_OPTIONS = [
 ];
 
 const INDENT_OPTIONS = ["0", "2", "4", "6", "8", "10", "12", "14", "16"];
+const ON_OFF = ["on", "off"];
 
-function buildSettingItems(settings: BeautifulPiSettings) {
+function b(v: boolean): string { return v ? "on" : "off"; }
+
+function buildSettingItems(s: BeautifulPiSettings) {
   return [
-    { id: "userRailColor", label: "User rail color", currentValue: settings.userRailColor, values: COLOR_OPTIONS },
-    { id: "thinkingRailColor", label: "Thinking rail color", currentValue: settings.thinkingRailColor, values: COLOR_OPTIONS },
-    { id: "thinkingTextColor", label: "Thinking text color", currentValue: settings.thinkingTextColor, values: COLOR_OPTIONS },
-    { id: "toolRailColor", label: "Tool rail color", currentValue: settings.toolRailColor, values: COLOR_OPTIONS },
-    { id: "indentLevel", label: "Indent level", currentValue: String(settings.indentLevel), values: INDENT_OPTIONS },
-    { id: "toolsOneLine", label: "Tools one-line", currentValue: settings.toolsOneLine ? "on" : "off", values: ["on", "off"] },
-    { id: "showBanner", label: "Show banner", currentValue: settings.showBanner ? "on" : "off", values: ["on", "off"] },
-    { id: "showFooter", label: "Show footer", currentValue: settings.showFooter ? "on" : "off", values: ["on", "off"] },
+    // ── Layout / features ──────────────────────────────────────────────────
+    { id: "showBanner",             label: "Banner",               currentValue: b(s.showBanner),            values: ON_OFF },
+    { id: "showFooter",             label: "Footer",               currentValue: b(s.showFooter),            values: ON_OFF },
+    { id: "sessionTitle",           label: "Session title",        currentValue: b(s.sessionTitle),          values: ON_OFF },
+    { id: "toolsOneLine",           label: "Tools one-line",       currentValue: b(s.toolsOneLine),          values: ON_OFF },
+    { id: "indentLevel",            label: "Indent level",         currentValue: String(s.indentLevel),      values: INDENT_OPTIONS },
+    // ── Agent ──────────────────────────────────────────────────────────────
+    { id: "agentRailColor",         label: "Agent rail color",     currentValue: s.agentRailColor,           values: COLOR_OPTIONS },
+    // ── User ──────────────────────────────────────────────────────────────
+    { id: "userRailColor",          label: "User rail color",      currentValue: s.userRailColor,            values: COLOR_OPTIONS },
+    // ── Thinking ──────────────────────────────────────────────────────────
+    { id: "thinkingRailColor",      label: "Thinking rail color",  currentValue: s.thinkingRailColor,        values: COLOR_OPTIONS },
+    { id: "dimThinkingText",        label: "Dim thinking text",    currentValue: b(s.dimThinkingText),       values: ON_OFF },
+    // ── Tools ─────────────────────────────────────────────────────────────
+    { id: "toolRailColor",          label: "Tools rail color",     currentValue: s.toolRailColor,            values: COLOR_OPTIONS },
+    { id: "dimToolsText",           label: "Dim tools text",       currentValue: b(s.dimToolsText),          values: ON_OFF },
+    // ── Custom messages ───────────────────────────────────────────────────
+    { id: "customMessageRailColor", label: "Custom rail color",    currentValue: s.customMessageRailColor,   values: COLOR_OPTIONS },
+    { id: "dimCustomMessages",      label: "Dim custom messages",  currentValue: b(s.dimCustomMessages),     values: ON_OFF },
   ];
+}
+
+function applyChange(current: BeautifulPiSettings, id: string, value: string): void {
+  switch (id) {
+    case "showBanner":             current.showBanner             = value === "on"; break;
+    case "showFooter":             current.showFooter             = value === "on"; break;
+    case "sessionTitle":           current.sessionTitle           = value === "on"; break;
+    case "toolsOneLine":           current.toolsOneLine           = value === "on"; break;
+    case "indentLevel":            current.indentLevel            = parseInt(value, 10); break;
+    case "agentRailColor":         current.agentRailColor         = value; break;
+    case "userRailColor":          current.userRailColor          = value; break;
+    case "thinkingRailColor":      current.thinkingRailColor      = value; break;
+    case "dimThinkingText":        current.dimThinkingText        = value === "on"; break;
+    case "toolRailColor":          current.toolRailColor          = value; break;
+    case "dimToolsText":           current.dimToolsText           = value === "on"; break;
+    case "customMessageRailColor": current.customMessageRailColor = value; break;
+    case "dimCustomMessages":      current.dimCustomMessages      = value === "on"; break;
+  }
 }
 
 export default function settingsExtension(pi: ExtensionAPI): void {
   pi.registerCommand("beautiful-pi", {
     description: "Configure beautiful-pi colours, layout and features",
     async handler(_args, ctx: ExtensionContext) {
-      if (!ctx.hasUI) {
-        return;
-      }
+      if (!ctx.hasUI) return;
 
       const settings = loadSettings();
       let current = { ...settings };
 
       await ctx.ui.custom((tui, theme, _keybindings, done) => {
-        const container = new Container();
-
         const themeAdapter = {
-          label: (text: string, selected: boolean) =>
-            selected ? theme.fg("accent", text) : theme.fg("text", text),
-          value: (text: string, selected: boolean) =>
-            selected ? theme.fg("accent", text) : theme.fg("muted", text),
+          label:       (text: string, selected: boolean) =>
+                         selected ? theme.fg("accent", text) : theme.fg("text", text),
+          value:       (text: string, selected: boolean) =>
+                         selected ? theme.fg("accent", text) : theme.fg("muted", text),
           description: (text: string) => theme.fg("dim", text),
-          cursor: theme.fg("accent", ">"),
-          hint: (text: string) => theme.fg("dim", text),
+          cursor:      theme.fg("accent", ">"),
+          hint:        (text: string) => theme.fg("dim", text),
         };
 
         const items = buildSettingItems(current);
 
         const settingsList = new SettingsList(
           items,
-          Math.min(items.length, 10),
+          Math.min(items.length, 12),
           themeAdapter,
           (id, newValue) => {
-            // Update in-memory
-            if (id === "indentLevel") {
-              current.indentLevel = parseInt(newValue, 10);
-            } else if (id === "toolsOneLine") {
-              current.toolsOneLine = newValue === "on";
-            } else if (id === "showBanner") {
-              current.showBanner = newValue === "on";
-            } else if (id === "showFooter") {
-              current.showFooter = newValue === "on";
-            } else if (id === "userRailColor") {
-              current.userRailColor = newValue;
-            } else if (id === "thinkingRailColor") {
-              current.thinkingRailColor = newValue;
-            } else if (id === "thinkingTextColor") {
-              current.thinkingTextColor = newValue;
-            } else if (id === "toolRailColor") {
-              current.toolRailColor = newValue;
-            }
-            // Persist immediately
+            applyChange(current, id, newValue);
             saveSettings(current);
-            // Refresh displayed values
-            const updated = buildSettingItems(current);
-            for (const item of updated) {
+            // Refresh all displayed values so cycling is consistent.
+            for (const item of buildSettingItems(current)) {
               settingsList.updateValue(item.id, item.currentValue);
             }
           },
-          () => {
-            done(undefined);
-          },
-          { enableSearch: false }
+          () => done(undefined),
+          { enableSearch: false },
         );
 
-        container.addChild(settingsList);
-        return container;
-      }, { overlay: true });
+        // ── Bordered wrapper ───────────────────────────────────────────────
+        const TITLE = " beautiful-pi settings ";
+        const HINT  = " ↑↓ navigate  Space/Enter change  Esc close ";
+        const ANSI_RE = /\x1b\[[0-9;]*m/g;
+        const vlen = (s: string) => Array.from(s.replace(ANSI_RE, "")).length;
+        const pad  = (s: string, w: number) => s + " ".repeat(Math.max(0, w - vlen(s)));
+
+        return {
+          render(width: number): string[] {
+            const inner = width - 2;
+            const bc = (s: string) => theme.fg("border", s);
+            const ac = (s: string) => theme.fg("accent", s);
+            const dc = (s: string) => theme.fg("dim", s);
+
+            const titleLen = vlen(TITLE);
+            const side = Math.max(0, Math.floor((inner - titleLen) / 2));
+            const extraR = inner - titleLen - side * 2;
+            const top = bc("╭" + "─".repeat(side)) + ac(TITLE) + bc("─".repeat(side + extraR) + "╮");
+
+            const content = settingsList.render(inner);
+            const rows = content.map((line) => bc("│") + pad(line, inner) + bc("│"));
+
+            const hintLen = vlen(HINT);
+            const hSide = Math.max(0, Math.floor((inner - hintLen) / 2));
+            const hExtra = inner - hintLen - hSide * 2;
+            const bottom = bc("╰" + "─".repeat(hSide)) + dc(HINT) + bc("─".repeat(hSide + hExtra) + "╯");
+
+            return [top, ...rows, bottom];
+          },
+          invalidate() { settingsList.invalidate(); },
+          handleInput(data: string) {
+            settingsList.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      }, { overlay: true, overlayOptions: { anchor: "center", width: 60, maxHeight: "85%" } });
 
       ctx.ui.notify("Run /reload to apply changes", "info");
     },

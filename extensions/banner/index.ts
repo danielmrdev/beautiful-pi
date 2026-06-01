@@ -84,13 +84,8 @@ function countSkills(): number {
 		try {
 			const entries = readdirSync(root, { withFileTypes: true });
 			for (const entry of entries) {
-				if (!entry.isDirectory()) continue;
-				const subPath = join(root, entry.name);
-				const subEntries = readdirSync(subPath, { withFileTypes: true });
-				for (const sub of subEntries) {
-					if (sub.isDirectory() && existsSync(join(subPath, sub.name, "SKILL.md"))) {
-						count++;
-					}
+				if (entry.isDirectory() && existsSync(join(root, entry.name, "SKILL.md"))) {
+					count++;
 				}
 			}
 		} catch {
@@ -101,22 +96,62 @@ function countSkills(): number {
 }
 
 function countExtensions(): number {
-	const extDir = join(homedir(), ".pi", "agent", "extensions");
-	if (!existsSync(extDir)) return 0;
+	let count = 0;
+	const piDir = join(homedir(), ".pi", "agent");
+	const settingsPath = join(piDir, "settings.json");
+
+	if (!existsSync(settingsPath)) return 0;
+
 	try {
-		return readdirSync(extDir).filter(
-			(f: string) => f.endsWith(".ts") || f.endsWith(".js"),
-		).length;
+		const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		const packages = settings.packages || [];
+
+		for (const pkg of packages) {
+			try {
+				let pkgJsonPath: string | null = null;
+
+				// Handle npm: prefix
+				if (pkg.startsWith("npm:")) {
+					const pkgName = pkg.substring(4);
+					pkgJsonPath = join(piDir, "bin", "node_modules", pkgName, "package.json");
+					// Also check global npm if not found
+					if (!existsSync(pkgJsonPath)) {
+						const globalPath = join(homedir(), ".npm-global", "lib", "node_modules", pkgName, "package.json");
+						if (existsSync(globalPath)) pkgJsonPath = globalPath;
+					}
+				}
+				// Handle git: prefix
+				else if (pkg.startsWith("git:")) {
+					const url = pkg.substring(4);
+					// Extract owner/repo from github URL
+					const match = url.match(/github\.com[\/:]([^\/]+)\/([^\.]+)/);
+					if (match) {
+						const owner = match[1];
+						const repo = match[2];
+						pkgJsonPath = join(piDir, "git", "github.com", owner, repo, "package.json");
+					}
+				}
+				// Handle local paths
+				else {
+					const localPath = pkg.startsWith("/") ? pkg : join(piDir, "..", "..", pkg);
+					pkgJsonPath = join(localPath, "package.json");
+				}
+
+				if (pkgJsonPath && existsSync(pkgJsonPath)) {
+					const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+					if (pkgJson.pi?.extensions) {
+						count++;
+					}
+				}
+			} catch {
+				/* ignore errors, try next package */
+			}
+		}
+
+		return count;
 	} catch {
 		return 0;
 	}
-}
-
-function formatTime(): string {
-	const now = new Date();
-	const h = String(now.getHours()).padStart(2, "0");
-	const m = String(now.getMinutes()).padStart(2, "0");
-	return `${h}:${m}`;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -157,19 +192,17 @@ function buildInfoCard(ctx: ExtensionContext, theme: Theme): string[] {
 	const skills = countSkills();
 	const extensions = countExtensions();
 	const modelName = ctx.model?.name || ctx.model?.id || "—";
-	const time = formatTime();
 
 	const label = (t: string) => theme.fg("muted", t);
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 	const bdr = (t: string) => theme.fg("borderMuted", t);
 
 	const innerLines = [
-		`${label("theme   ")}  ${val(themeName)}`,
 		`${label("version ")}  ${val(version, "mdCode")}`,
+		`${label("model   ")}  ${val(modelName, "mdHeading")}`,
 		`${label("skills  ")}  ${val(String(skills), "syntaxString")}`,
 		`${label("exts    ")}  ${val(String(extensions), "syntaxFunction")}`,
-		`${label("model   ")}  ${val(modelName, "mdHeading")}`,
-		`${label("session ")}  ${val(time, "dim")}`,
+		`${label("theme   ")}  ${val(themeName)}`,
 	];
 
 	const maxLen = Math.max(...innerLines.map(visibleLen));

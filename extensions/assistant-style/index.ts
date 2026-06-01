@@ -1,13 +1,14 @@
 /**
  * Patches AssistantMessageComponent to render:
- *  - Text blocks:     accent-coloured ┃ left rail
+ *  - Text blocks:     agentRailColor-coloured ┃ left rail
  *  - Thinking blocks: thinkingText-coloured ┃ left rail, italic content
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { AssistantMessageComponent } from "@mariozechner/pi-coding-agent";
+import { AssistantMessageComponent, CustomMessageComponent, SkillInvocationMessageComponent } from "@mariozechner/pi-coding-agent";
 import { Markdown, Spacer, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
+import { hasNerdFonts } from "../shared/icons.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────
 
@@ -46,7 +47,8 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
       const contentWidth = Math.max(1, safeWidth - visibleWidth(RAIL_PREFIX));
       const lines = trimEdgeBlankLines(md.render(contentWidth));
       const body = lines.length > 0 ? lines : [""];
-      return body.map(line => renderRailLine(line, safeWidth, "accent", "accent"));
+      const s = loadSettings();
+      return body.map(line => renderRailLine(line, safeWidth, s.agentRailColor, "accent"));
     },
     invalidate() { md.invalidate?.(); },
   };
@@ -55,7 +57,8 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
 function createAgentTextLine(text: string) {
   return {
     render(width: number): string[] {
-      return [renderRailLine(text, Math.max(1, Math.floor(width)), "accent", "accent")];
+      const s = loadSettings();
+      return [renderRailLine(text, Math.max(1, Math.floor(width)), s.agentRailColor, "accent")];
     },
     invalidate() {},
   };
@@ -71,7 +74,7 @@ function createThinkingBlock(text: string, markdownTheme: unknown) {
   const theme = _theme;
   const settings = loadSettings();
   const defaultStyle = theme
-    ? { color: (t: string) => safeFg(theme, settings.thinkingTextColor, "muted", t), italic: true }
+    ? { color: settings.dimThinkingText ? (t: string) => safeFg(theme, settings.thinkingTextColor, "muted", t) : undefined, italic: true }
     : undefined;
   const md = new Markdown(text.trim(), 0, 0, markdownTheme as never, defaultStyle as never);
   const indent = getThinkingIndent();
@@ -85,6 +88,171 @@ function createThinkingBlock(text: string, markdownTheme: unknown) {
     },
     invalidate() { md.invalidate?.(); },
   };
+}
+
+// ── Skill block ─────────────────────────────────────────────────────────────────
+
+const SKILL_ICON_NF  = "\uF5DA"; // nf-mdi-book  (Nerd Fonts)
+const SKILL_ICON_ASCII = "[skill]";
+
+function skillLabel(): string {
+  return hasNerdFonts() ? SKILL_ICON_NF : SKILL_ICON_ASCII;
+}
+
+function createSkillMarkdownBlock(text: string, markdownTheme: unknown, indent = "") {
+  const theme = _theme;
+  const settings = loadSettings();
+  const defaultStyle = (theme && settings.dimCustomMessages)
+    ? { color: (t: string) => safeFg(theme, "muted", "muted", t) }
+    : undefined;
+  const md = new Markdown(text.trim(), 0, 0, markdownTheme as never, defaultStyle as never);
+  return {
+    render(width: number): string[] {
+      const s = loadSettings();
+      const safeWidth = Math.max(1, Math.floor(width));
+      const contentWidth = Math.max(1, safeWidth - indent.length - visibleWidth(RAIL_PREFIX));
+      const lines = trimEdgeBlankLines(md.render(contentWidth));
+      const body = lines.length > 0 ? lines : [""];
+      return body.map(line => renderRailLine(line, safeWidth, s.customMessageRailColor, "borderMuted", indent));
+    },
+    invalidate() { md.invalidate?.(); },
+  };
+}
+
+// ── Patch SkillInvocationMessageComponent ────────────────────────────────────
+
+type PatchedSkillProto = {
+  updateDisplay(): void;
+  skillBlock?: { name: string; location: string; content: string; userMessage?: string };
+  markdownTheme?: unknown;
+  expanded?: boolean;
+  __beautifulSkillOriginal?: () => void;
+};
+
+function patchSkillInvocationMessage(): void {
+  const proto = (SkillInvocationMessageComponent as any).prototype as PatchedSkillProto;
+  if (typeof proto.updateDisplay !== "function") return;
+
+  if (!proto.__beautifulSkillOriginal) {
+    proto.__beautifulSkillOriginal = proto.updateDisplay;
+  }
+
+  proto.updateDisplay = function(this: PatchedSkillProto): void {
+    (this as any).clear();
+    const theme = _theme;
+    const settings = loadSettings();
+    const skillBlock = this.skillBlock;
+    if (!skillBlock) {
+      this.__beautifulSkillOriginal?.call(this);
+      return;
+    }
+
+    const icon = skillLabel();
+    const namePart = theme
+      ? safeFg(theme, settings.dimCustomMessages ? "muted" : "text", "text", skillBlock.name)
+      : skillBlock.name;
+    const iconPart = theme
+      ? safeFg(theme, settings.customMessageRailColor, "borderMuted", icon)
+      : icon;
+
+    const indent = getThinkingIndent();
+
+    if (this.expanded) {
+      // Header line: indent + ┃ 󰗊 name
+      const headerText = `${iconPart} ${namePart}`;
+      (this as any).addChild({
+        render: (width: number) => [
+          renderRailLine(headerText, Math.max(1, Math.floor(width)), settings.customMessageRailColor, "borderMuted", indent)
+        ],
+        invalidate: () => {},
+      });
+      // Content with rail + indent
+      (this as any).addChild(new Spacer(1));
+      (this as any).addChild(createSkillMarkdownBlock(skillBlock.content, this.markdownTheme, indent));
+    } else {
+      // Collapsed: indent + ┃ 󰗊 name
+      const lineText = `${iconPart} ${namePart}`;
+      (this as any).addChild({
+        render: (width: number) => [
+          renderRailLine(lineText, Math.max(1, Math.floor(width)), settings.customMessageRailColor, "borderMuted", indent)
+        ],
+        invalidate: () => {},
+      });
+    }
+  } as PatchedSkillProto["updateDisplay"];
+}
+
+// ── Patch CustomMessageComponent ────────────────────────────────────────────
+
+type PatchedCustomProto = {
+  rebuild(): void;
+  message?: { customType: string; content: unknown };
+  markdownTheme?: unknown;
+  customRenderer?: unknown;
+  _expanded?: boolean;
+  __beautifulCustomOriginal?: () => void;
+};
+
+function patchCustomMessage(): void {
+  const proto = (CustomMessageComponent as any).prototype as PatchedCustomProto;
+  if (typeof proto.rebuild !== "function") return;
+
+  if (!proto.__beautifulCustomOriginal) {
+    proto.__beautifulCustomOriginal = proto.rebuild;
+  }
+
+  proto.rebuild = function(this: PatchedCustomProto): void {
+    // Let original do all cleanup + rendering first.
+    this.__beautifulCustomOriginal?.call(this);
+
+    // If a custom renderer produced a component, respect it entirely.
+    if (this.customComponent) return;
+
+    // We're in the default path: original re-added `box` with bg + label + markdown.
+    // Replace it with our rail + indent styling.
+    const message = this.message;
+    if (!message) return;
+
+    // Remove the box that was just added by the original.
+    (this as any).removeChild((this as any).box);
+
+    const settings = loadSettings();
+    const indent = getThinkingIndent();
+
+    // Extract text
+    let text: string;
+    if (typeof message.content === "string") {
+      text = message.content as string;
+    } else if (Array.isArray(message.content)) {
+      text = (message.content as Array<any>)
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("\n");
+    } else {
+      text = String(message.content ?? "");
+    }
+
+    // Label: indent + ┃ [customType]
+    const labelText = safeFg(_theme, settings.dimCustomMessages ? "muted" : "text", "text", `[${message.customType}]`);
+    const contentChild = text.trim()
+      ? createSkillMarkdownBlock(text, this.markdownTheme, indent)
+      : null;
+
+    const wrapper = {
+      render(width: number): string[] {
+        const safeWidth = Math.max(1, Math.floor(width));
+        const s = loadSettings();
+        const lines = [renderRailLine(labelText, safeWidth, s.customMessageRailColor, "borderMuted", indent)];
+        if (contentChild) lines.push(...contentChild.render(safeWidth));
+        return lines;
+      },
+      invalidate() { contentChild?.invalidate(); },
+    };
+
+    // Store as customComponent so next rebuild removes it via the original's cleanup.
+    (this as any).customComponent = wrapper;
+    (this as any).addChild(wrapper);
+  } as PatchedCustomProto["rebuild"];
 }
 
 // ── Patch ─────────────────────────────────────────────────────────────────────
@@ -184,6 +352,8 @@ export default function assistantStyleExtension(pi: ExtensionAPI): void {
   const applyPatch = (_event: any, ctx: ExtensionContext) => {
     setTheme(ctx.hasUI ? (ctx.ui as any).theme : null);
     patchAssistantMessage();
+    patchSkillInvocationMessage();
+    patchCustomMessage();
   };
 
   pi.on("session_start", applyPatch);

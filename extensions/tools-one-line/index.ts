@@ -8,6 +8,7 @@ import { registerGrepTool }  from "./register-grep.ts";
 import { registerFindTool }  from "./register-find.ts";
 import { registerLsTool }    from "./register-ls.ts";
 import { setAgentActive }    from "./shared.ts";
+import { patchGenericToolRenderer } from "./register-generic.ts";
 
 export default function toolsOneLineExtension(pi: ExtensionAPI): void {
   const settings = loadSettings();
@@ -26,4 +27,8 @@ export default function toolsOneLineExtension(pi: ExtensionAPI): void {
   registerGrepTool(pi);
   registerFindTool(pi);
   registerLsTool(pi);
+
+  // Intercept any tool not explicitly handled above.
+  // Runs once at load; /reload re-applies idempotently.
+  patchGenericToolRenderer();
 }

@@ -19,14 +19,20 @@ function getDefaultsPath(): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface BeautifulPiSettings {
+  agentRailColor: string;
   userRailColor: string;
   thinkingRailColor: string;
   thinkingTextColor: string;
+  dimThinkingText: boolean;
   toolRailColor: string;
+  dimToolsText: boolean;
+  customMessageRailColor: string;
+  dimCustomMessages: boolean;
   indentLevel: number;
   toolsOneLine: boolean;
   showBanner: boolean;
   showFooter: boolean;
+  sessionTitle: boolean;
 }
 
 const DEFAULTS: BeautifulPiSettings = (() => {
@@ -35,10 +41,15 @@ const DEFAULTS: BeautifulPiSettings = (() => {
   } catch {
     // Fallback if JSON file can't be resolved (e.g. different runtime path)
     return {
-      userRailColor: "syntaxKeyword",
+      agentRailColor: "accent",
+      userRailColor: "mdLink",
       thinkingRailColor: "mdHeading",
       thinkingTextColor: "muted",
+      dimThinkingText: true,
       toolRailColor: "success",
+      dimToolsText: true,
+      customMessageRailColor: "borderMuted",
+      dimCustomMessages: true,
       indentLevel: 4,
       toolsOneLine: true,
       showBanner: true,

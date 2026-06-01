@@ -13,6 +13,7 @@ import {
   createReadToolDefinition,
   createWriteToolDefinition,
 } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 
 const { resolve } = require("node:path");
@@ -85,17 +86,20 @@ export function getDefs(cwd: string): Record<ToolName, any> {
 // ── ANSI-safe truncation ──────────────────────────────────────────────────────
 
 export function truncate(str: string, maxW: number): string {
-  let w = 0, out = "", esc = false;
-  for (const ch of str) {
-    if (ch === "\x1b") { esc = true; out += ch; continue; }
-    if (esc) { out += ch; if (/[a-zA-Z]/.test(ch)) esc = false; continue; }
-    if (w >= maxW) break;
-    out += ch; w++;
-  }
-  return out;
+  return truncateToWidth(str, maxW);
 }
 
 // ── One-line component ────────────────────────────────────────────────────────
+
+/**
+ * A zero-height component returned by renderResult (non-expanded) so that
+ * pi doesn't stack a duplicate of the renderCall line below itself.
+ */
+export class NullWidget {
+  render(_width: number): string[] { return []; }
+  invalidate(): void {}
+  dispose(): void {}
+}
 
 export class OneLine {
   private _text = "";
@@ -244,23 +248,30 @@ export function registerTool(pi: ExtensionAPI, name: ToolName, buildLabel: Label
       // A tool is visually "done" if it truly completed OR if the agent is not
       // active (zombie tool from a resumed session — isPartial stays true forever).
       const isDone = (!ctx.isPartial && ctx.argsComplete) || !isAgentActive;
-      const labelTheme = isDone ? makeDimTheme(theme as Theme) : (theme as Theme);
+      const dimThemeSettings = loadSettings();
+      const labelTheme = isDone && dimThemeSettings.dimToolsText ? makeDimTheme(theme as Theme) : (theme as Theme);
       return renderLine(ctx, theme as Theme, buildLabel(args, ctx.cwd, labelTheme), intent);
     },
 
     renderResult(result: any, options: any, theme: any, context: any) {
       const ctx = context as Ctx;
-      const dimTheme = makeDimTheme(theme as Theme);
-      const label = buildLabel(ctx.args, ctx.cwd, dimTheme);
-      const intent = getIntent(ctx.args);
 
       if (!options.expanded) {
-        return renderLine({ ...ctx, isPartial: false, argsComplete: true }, theme as Theme, label, intent);
+        // renderCall already shows the ✓/✕ done state.
+        // Returning a zero-height NullWidget prevents a duplicate line from
+        // being stacked below the call renderer by pi's updateDisplay().
+        return ctx.lastComponent instanceof NullWidget
+          ? ctx.lastComponent
+          : new NullWidget();
       }
 
       // Expanded: delegate to built-in renderer — stop our timer first
       if (ctx.lastComponent instanceof OneLine) ctx.lastComponent.stopTimer();
       const builtIn = getDefs(ctx.cwd)[name];
+      const dimSettings = loadSettings();
+      const dimTheme = dimSettings.dimToolsText ? makeDimTheme(theme as Theme) : (theme as Theme);
+      const label = buildLabel(ctx.args, ctx.cwd, dimTheme);
+      const intent = getIntent(ctx.args);
       return builtIn.renderResult?.(result, options, theme, context)
         ?? renderLine({ ...ctx, isPartial: false, argsComplete: true }, theme as Theme, label, intent);
     },
