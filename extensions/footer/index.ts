@@ -372,9 +372,11 @@ export default function (pi: ExtensionAPI) {
           });
           const mkLine = (left: { text: string; w: number }, right: { text: string; w: number }) => {
             const f = usableW - left.w - right.w;
-            return f >= 1
+            const line = f >= 1
               ? left.text + fill(f) + right.text
-              : truncateToWidth(left.text + right.text, usableW);
+              : left.text + right.text;
+            // Ensure line is never wider than usableW
+            return truncateToWidth(line, usableW);
           };
 
           // Attempt from most to least content

@@ -524,15 +524,18 @@ function buildPiArt(theme: Theme): string[] {
 
 type CardRow = { kind: "line"; text: string } | { kind: "separator" };
 
-function wrapResourceList(items: string[], maxWidth = 52): string[] {
+function wrapResourceList(items: string[], maxWidth = 52, cardWidth?: number): string[] {
 	if (items.length === 0) return ["  —"];
+
+	// Use cardWidth if provided, otherwise use maxWidth
+	const effectiveMax = cardWidth ? Math.min(maxWidth, cardWidth - 4) : maxWidth;
 
 	const lines: string[] = [];
 	let current = "  ";
 	for (const item of items) {
 		const separator = current.trim().length === 0 ? "" : ", ";
 		const candidate = current + separator + item;
-		if (current.trim().length > 0 && visibleLen(candidate) > maxWidth) {
+		if (current.trim().length > 0 && visibleLen(candidate) > effectiveMax) {
 			lines.push(current);
 			current = `  ${item}`;
 		} else {
@@ -587,19 +590,19 @@ function buildAgentCard(ctx: ExtensionContext, theme: Theme): string[] {
 	], 25);
 }
 
-function buildResourcesCard(theme: Theme, resources: StartupResources): string[] {
+function buildResourcesCard(theme: Theme, resources: StartupResources, terminalWidth?: number): string[] {
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 	const section = (t: string) => theme.bold(val(`[${t}]`, "mdHeading"));
 
 	return buildBorderedCard(theme, " RESOURCES ", [
 		{ kind: "line", text: section("Extensions") },
-		...wrapResourceList(resources.extensions).map((text) => ({ kind: "line" as const, text: val(text, "syntaxFunction") })),
+		...wrapResourceList(resources.extensions, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "syntaxFunction") })),
 		{ kind: "separator" },
 		{ kind: "line", text: section("Skills") },
-		...wrapResourceList(resources.skills).map((text) => ({ kind: "line" as const, text: val(text, "syntaxString") })),
+		...wrapResourceList(resources.skills, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "syntaxString") })),
 		{ kind: "separator" },
 		{ kind: "line", text: section("Themes") },
-		...wrapResourceList(resources.themes).map((text) => ({ kind: "line" as const, text: val(text, "text") })),
+		...wrapResourceList(resources.themes, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "text") })),
 	], 30);
 }
 
@@ -637,13 +640,30 @@ function buildLeftColumn(logo: string[], agentCard: string[]): string[] {
 	];
 }
 
+function truncateToWidth(str: string, maxW: number): string {
+	let w = 0;
+	let inEsc = false;
+	let result = "";
+	for (const ch of str) {
+		if (ch === "\x1b") { inEsc = true; result += ch; continue; }
+		if (inEsc) { result += ch; if (/[a-zA-Z]/.test(ch)) inEsc = false; continue; }
+		const cw = strWidth(ch);
+		if (w + cw > maxW) break;
+		result += ch;
+		w += cw;
+	}
+	return result;
+}
+
 function renderColumns(left: string[], right: string[], width: number, gap = 4): string[] {
 	const leftWidth = maxVisibleWidth(left);
 	const rightWidth = maxVisibleWidth(right);
 	const totalWidth = leftWidth + gap + rightWidth;
 
 	if (width < totalWidth) {
-		return ["", ...left, "", ...right, ""];
+		// Truncate each line to fit within terminal width
+		const truncateLine = (line: string) => truncateToWidth(line, width);
+		return ["", ...left.map(truncateLine), "", ...right.map(truncateLine), ""];
 	}
 
 	const leftPad = " ".repeat(Math.max(0, Math.floor((width - totalWidth) / 2)));
@@ -683,7 +703,7 @@ export function showBanner(ctx: ExtensionContext, pi?: ExtensionAPI) {
 				render(width: number): string[] {
 					const rendered = lines.map((line) => theme.fg("accent", line));
 					const left = buildLeftColumn(rendered, buildAgentCard(ctx, theme));
-					const right = buildResourcesCard(theme, resources);
+					const right = buildResourcesCard(theme, resources, width);
 					return renderColumns(left, right, width);
 				},
 			}),
@@ -699,7 +719,7 @@ export function showBanner(ctx: ExtensionContext, pi?: ExtensionAPI) {
 			render(width: number): string[] {
 				const piArt = buildPiArt(theme);
 				const left = buildLeftColumn(piArt, buildAgentCard(ctx, theme));
-				const right = buildResourcesCard(theme, resources);
+				const right = buildResourcesCard(theme, resources, width);
 				return renderColumns(left, right, width);
 			},
 		}),

@@ -101,7 +101,7 @@ export const GITHUB_ICON  = "\uF113"; // nf-fa-github_alt (same as p10k VCS_GIT_
 export const GITHUB_ICON_ASCII = "gh";
 
 export const ASCII_ICONS: IconSet = {
-  pi:     "\u{1D6D1}", // 𝛑 mathematical bold small pi
+  pi:     "\u03C0",    // π Greek small letter pi (standard 1-cell)
   folder: "",          // nothing — path already starts with ~/
   git:    "",          // nothing — just show branch
   branch: "\u2387",    // ⎇
