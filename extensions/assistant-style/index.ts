@@ -1,13 +1,13 @@
 /**
  * Patches AssistantMessageComponent to render:
- *  - Text blocks:     agentRailColor-coloured ┃ left rail
+ *  - Text blocks:     background-coloured blocks without copyable left rail
  *  - Thinking blocks: thinkingText-coloured ┃ left rail, italic content
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AssistantMessageComponent, CustomMessageComponent, SkillInvocationMessageComponent } from "@earendil-works/pi-coding-agent";
 import { Markdown, Spacer, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { loadSettings, safeFg } from "../shared/settings.ts";
+import { loadSettings, safeBg, safeFg } from "../shared/settings.ts";
 import { hasNerdFonts } from "../shared/icons.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────
@@ -37,6 +37,13 @@ function renderRailLine(line: string, width: number, railColorToken: string, fal
   return `${prefix}${truncateToWidth(line, contentWidth, "", true)}`;
 }
 
+function renderBgLine(line: string, width: number, bgToken = "customMessageBg", fallbackColor = "selectedBg"): string {
+  const safeWidth = Math.max(1, Math.floor(width));
+  const content = truncateToWidth(line, safeWidth, "", true);
+  const padding = Math.max(0, safeWidth - visibleWidth(content));
+  return safeBg(_theme, bgToken, fallbackColor, `${content}${" ".repeat(padding)}`);
+}
+
 // ── Agent text block ──────────────────────────────────────────────────────────
 
 function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
@@ -44,11 +51,9 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
   return {
     render(width: number): string[] {
       const safeWidth = Math.max(1, Math.floor(width));
-      const contentWidth = Math.max(1, safeWidth - visibleWidth(RAIL_PREFIX));
-      const lines = trimEdgeBlankLines(md.render(contentWidth));
+      const lines = trimEdgeBlankLines(md.render(safeWidth));
       const body = lines.length > 0 ? lines : [""];
-      const s = loadSettings();
-      return body.map(line => renderRailLine(line, safeWidth, s.agentRailColor, "accent"));
+      return body.map(line => renderBgLine(line, safeWidth));
     },
     invalidate() { md.invalidate?.(); },
   };
@@ -57,8 +62,7 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
 function createAgentTextLine(text: string) {
   return {
     render(width: number): string[] {
-      const s = loadSettings();
-      return [renderRailLine(text, Math.max(1, Math.floor(width)), s.agentRailColor, "accent")];
+      return [renderBgLine(text, Math.max(1, Math.floor(width)), "toolErrorBg", "selectedBg")];
     },
     invalidate() {},
   };
@@ -189,6 +193,7 @@ type PatchedCustomProto = {
   message?: { customType: string; content: unknown };
   markdownTheme?: unknown;
   customRenderer?: unknown;
+  customComponent?: unknown;
   _expanded?: boolean;
   __beautifulCustomOriginal?: () => void;
 };
