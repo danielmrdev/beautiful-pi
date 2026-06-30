@@ -15,8 +15,6 @@ import { loadSettings } from "../shared/settings.ts";
 
 // ── ANSI helpers ─────────────────────────────────────────────────────────────
 
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
 // Use strWidth from icons.ts for all visible-width measurements
 const visibleWidth = strWidth;
 
@@ -288,7 +286,7 @@ export default function (pi: ExtensionAPI) {
 
           // Progress bar
           const barTotal = 12;
-          const barFilled = Math.round((contextPercent / 100) * barTotal);
+          const barFilled = Math.min(barTotal, Math.round((contextPercent / 100) * barTotal));
           const barEmpty  = barTotal - barFilled;
           let barColor: string;
           if (contextPercent > 90) barColor = "error";
