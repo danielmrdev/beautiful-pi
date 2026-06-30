@@ -250,10 +250,14 @@ function resolveExtensionEntries(dir: string): string[] | null {
 	return null;
 }
 
-function collectExtensionFiles(dir: string): string[] {
+function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
 	if (!isDirectory(dir)) return [];
+	const visited = _visited ?? new Set<string>();
+	const resolved = resolve(dir);
+	if (visited.has(resolved)) return [];
+	visited.add(resolved);
 	const rootEntries = resolveExtensionEntries(dir);
-	if (rootEntries) return collectFilesFromPaths(rootEntries, "extensions");
+	if (rootEntries) return collectFilesFromPaths(rootEntries, "extensions", visited);
 
 	const out: string[] = [];
 	try {
@@ -264,21 +268,25 @@ function collectExtensionFiles(dir: string): string[] {
 				out.push(fullPath);
 			} else if (entry.isDirectory()) {
 				const resolvedEntries = resolveExtensionEntries(fullPath);
-				if (resolvedEntries) out.push(...collectFilesFromPaths(resolvedEntries, "extensions"));
+				if (resolvedEntries) out.push(...collectFilesFromPaths(resolvedEntries, "extensions", visited));
 			}
 		}
 	} catch { /* ignore */ }
 	return out;
 }
 
-function collectFilesFromPaths(paths: string[], resourceType: "extensions" | "skills" | "themes"): string[] {
+function collectFilesFromPaths(paths: string[], resourceType: "extensions" | "skills" | "themes", _visited?: Set<string>): string[] {
+	const visited = _visited ?? new Set<string>();
 	const out: string[] = [];
 	for (const p of paths) {
 		if (!existsSync(p)) continue;
 		if (isFile(p)) {
 			out.push(p);
 		} else if (isDirectory(p)) {
-			if (resourceType === "extensions") out.push(...collectExtensionFiles(p));
+			const resolved = resolve(p);
+			if (visited.has(resolved)) continue;
+			visited.add(resolved);
+			if (resourceType === "extensions") out.push(...collectExtensionFiles(p, visited));
 			if (resourceType === "skills") out.push(...collectSkillFiles(p));
 			if (resourceType === "themes") out.push(...collectThemeFiles(p, true));
 		}
@@ -303,7 +311,7 @@ function parseNpmName(source: string): string | null {
 function parseGitSource(source: string): { host: string; repoPath: string } | null {
 	let s = source.startsWith("git:") ? source.slice("git:".length) : source;
 	s = s.replace(/^https?:\/\//, "").replace(/^ssh:\/\//, "").replace(/^git:\/\//, "");
-	let match = s.match(/^git@([^:]+):(.+)$/) || s.match(/^(?:[^@/]+@)?([^/:]+)[:/](.+)$/);
+	const match = s.match(/^git@([^:]+):(.+)$/) || s.match(/^(?:[^@/]+@)?([^/:]+)[:/](.+)$/);
 	if (!match) return null;
 	let repoPath = match[2].replace(/\.git$/, "");
 	const refAt = repoPath.lastIndexOf("@");
@@ -609,8 +617,6 @@ function buildResourcesCard(theme: Theme, resources: StartupResources, terminalW
 /* ──────────────────────────────────────────────────────────────────────────────
    Helpers
    ────────────────────────────────────────────────────────────────────────────── */
-
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 const visibleLen = strWidth;
 
