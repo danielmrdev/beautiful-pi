@@ -6,11 +6,22 @@
  * Uses full terminal width. Hides on first input.
  */
 
-import type { ExtensionAPI, ExtensionContext, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+	Theme,
+	ThemeColor,
+} from "@earendil-works/pi-coding-agent";
 import { strWidth } from "../shared/icons.ts";
 import { loadSettings } from "../shared/settings.ts";
 
-const { readFileSync, existsSync, readdirSync, realpathSync, statSync } = require("node:fs");
+const {
+	readFileSync,
+	existsSync,
+	readdirSync,
+	realpathSync,
+	statSync,
+} = require("node:fs");
 const { basename, dirname, join, relative, resolve } = require("node:path");
 const { homedir } = require("node:os");
 
@@ -41,9 +52,7 @@ function loadArt(): string {
    Data gatherers
    ────────────────────────────────────────────────────────────────────────────── */
 
-const PI_PACKAGE_NAMES = [
-	"@earendil-works/pi-coding-agent",
-];
+const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent"];
 
 function packageJsonPath(nodeModulesRoot: string, pkgName: string): string {
 	return join(nodeModulesRoot, ...pkgName.split("/"), "package.json");
@@ -52,14 +61,19 @@ function packageJsonPath(nodeModulesRoot: string, pkgName: string): string {
 function readPackageVersion(pkgPath: string): string | null {
 	try {
 		const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-		if (PI_PACKAGE_NAMES.includes(pkg.name) && pkg.version) return String(pkg.version);
-	} catch { /* try next */ }
+		if (PI_PACKAGE_NAMES.includes(pkg.name) && pkg.version)
+			return String(pkg.version);
+	} catch {
+		/* try next */
+	}
 	return null;
 }
 
 function nearestPiPackageJson(startPath: string): string | null {
 	try {
-		let current = statSync(startPath).isDirectory() ? startPath : dirname(startPath);
+		let current = statSync(startPath).isDirectory()
+			? startPath
+			: dirname(startPath);
 		while (true) {
 			const pkgPath = join(current, "package.json");
 			const version = existsSync(pkgPath) ? readPackageVersion(pkgPath) : null;
@@ -84,7 +98,9 @@ function getPiVersion(): string {
 	for (const pkgName of PI_PACKAGE_NAMES) {
 		try {
 			add(require.resolve(`${pkgName}/package.json`));
-		} catch { /* try next */ }
+		} catch {
+			/* try next */
+		}
 	}
 
 	// If the CLI entrypoint lives inside the package (npx/global install), walk up to package.json.
@@ -102,7 +118,15 @@ function getPiVersion(): string {
 		join(homedir(), ".npm-global", "lib", "node_modules"),
 		join(homedir(), ".pi", "agent", "npm", "node_modules"),
 		join(homedir(), ".pi", "agent", "bin", "node_modules"),
-		join(homedir(), ".nvm", "versions", "node", process.version, "lib", "node_modules"),
+		join(
+			homedir(),
+			".nvm",
+			"versions",
+			"node",
+			process.version,
+			"lib",
+			"node_modules",
+		),
 		join(dirname(dirname(process.execPath)), "lib", "node_modules"),
 		join("/usr", "local", "lib", "node_modules"),
 	];
@@ -116,11 +140,16 @@ function getPiVersion(): string {
 		const npxDirs = readdirSync(npxRoot, { withFileTypes: true })
 			.filter((entry: any) => entry.isDirectory())
 			.map((entry: any) => join(npxRoot, entry.name))
-			.sort((a: string, b: string) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+			.sort(
+				(a: string, b: string) => statSync(b).mtimeMs - statSync(a).mtimeMs,
+			);
 		for (const dir of npxDirs) {
-			for (const pkgName of PI_PACKAGE_NAMES) add(packageJsonPath(join(dir, "node_modules"), pkgName));
+			for (const pkgName of PI_PACKAGE_NAMES)
+				add(packageJsonPath(join(dir, "node_modules"), pkgName));
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 
 	for (const p of candidates) {
 		const version = readPackageVersion(p);
@@ -171,8 +200,9 @@ function isFile(path: string): boolean {
 }
 
 function uniqueSorted(values: string[]): string[] {
-	return Array.from(new Set(values.filter((v) => v.trim().length > 0)))
-		.sort((a, b) => a.localeCompare(b));
+	return Array.from(new Set(values.filter((v) => v.trim().length > 0))).sort(
+		(a, b) => a.localeCompare(b),
+	);
 }
 
 function compactLabel(label: string): string {
@@ -184,7 +214,10 @@ function packageNameFromJson(packageRoot: string): string | undefined {
 	return typeof pkg?.name === "string" ? pkg.name : undefined;
 }
 
-function collectFilesRecursive(dir: string, accept: (name: string) => boolean): string[] {
+function collectFilesRecursive(
+	dir: string,
+	accept: (name: string) => boolean,
+): string[] {
 	const out: string[] = [];
 	if (!isDirectory(dir)) return out;
 	try {
@@ -197,23 +230,35 @@ function collectFilesRecursive(dir: string, accept: (name: string) => boolean): 
 				out.push(fullPath);
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return out;
 }
 
 function collectThemeFiles(dir: string, recursive = false): string[] {
 	if (!isDirectory(dir)) return [];
-	if (recursive) return collectFilesRecursive(dir, (name) => name.endsWith(".json"));
+	if (recursive)
+		return collectFilesRecursive(dir, (name) => name.endsWith(".json"));
 	try {
 		return readdirSync(dir, { withFileTypes: true })
-			.filter((entry: any) => entry.isFile() && !entry.name.startsWith(".") && entry.name.endsWith(".json"))
+			.filter(
+				(entry: any) =>
+					entry.isFile() &&
+					!entry.name.startsWith(".") &&
+					entry.name.endsWith(".json"),
+			)
 			.map((entry: any) => join(dir, entry.name));
 	} catch {
 		return [];
 	}
 }
 
-function collectSkillFiles(dir: string, includeRootMd = true, root = dir): string[] {
+function collectSkillFiles(
+	dir: string,
+	includeRootMd = true,
+	root = dir,
+): string[] {
 	if (!isDirectory(dir)) return [];
 	const skillPath = join(dir, "SKILL.md");
 	if (isFile(skillPath)) return [skillPath];
@@ -225,11 +270,18 @@ function collectSkillFiles(dir: string, includeRootMd = true, root = dir): strin
 			const fullPath = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				out.push(...collectSkillFiles(fullPath, includeRootMd, root));
-			} else if (includeRootMd && dir === root && entry.isFile() && entry.name.endsWith(".md")) {
+			} else if (
+				includeRootMd &&
+				dir === root &&
+				entry.isFile() &&
+				entry.name.endsWith(".md")
+			) {
 				out.push(fullPath);
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return out;
 }
 
@@ -237,7 +289,13 @@ function resolveExtensionEntries(dir: string): string[] | null {
 	const manifest = readJson(join(dir, "package.json"))?.pi;
 	if (Array.isArray(manifest?.extensions) && manifest.extensions.length > 0) {
 		const entries = manifest.extensions
-			.filter((entry: any) => typeof entry === "string" && !entry.startsWith("!") && !entry.startsWith("+") && !entry.startsWith("-"))
+			.filter(
+				(entry: any) =>
+					typeof entry === "string" &&
+					!entry.startsWith("!") &&
+					!entry.startsWith("+") &&
+					!entry.startsWith("-"),
+			)
 			.map((entry: string) => resolve(dir, entry))
 			.filter((entry: string) => existsSync(entry));
 		if (entries.length > 0) return entries;
@@ -257,7 +315,8 @@ function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
 	if (visited.has(resolved)) return [];
 	visited.add(resolved);
 	const rootEntries = resolveExtensionEntries(dir);
-	if (rootEntries) return collectFilesFromPaths(rootEntries, "extensions", visited);
+	if (rootEntries)
+		return collectFilesFromPaths(rootEntries, "extensions", visited);
 
 	const out: string[] = [];
 	try {
@@ -268,14 +327,23 @@ function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
 				out.push(fullPath);
 			} else if (entry.isDirectory()) {
 				const resolvedEntries = resolveExtensionEntries(fullPath);
-				if (resolvedEntries) out.push(...collectFilesFromPaths(resolvedEntries, "extensions", visited));
+				if (resolvedEntries)
+					out.push(
+						...collectFilesFromPaths(resolvedEntries, "extensions", visited),
+					);
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return out;
 }
 
-function collectFilesFromPaths(paths: string[], resourceType: "extensions" | "skills" | "themes", _visited?: Set<string>): string[] {
+function collectFilesFromPaths(
+	paths: string[],
+	resourceType: "extensions" | "skills" | "themes",
+	_visited?: Set<string>,
+): string[] {
 	const visited = _visited ?? new Set<string>();
 	const out: string[] = [];
 	for (const p of paths) {
@@ -286,7 +354,8 @@ function collectFilesFromPaths(paths: string[], resourceType: "extensions" | "sk
 			const resolved = resolve(p);
 			if (visited.has(resolved)) continue;
 			visited.add(resolved);
-			if (resourceType === "extensions") out.push(...collectExtensionFiles(p, visited));
+			if (resourceType === "extensions")
+				out.push(...collectExtensionFiles(p, visited));
 			if (resourceType === "skills") out.push(...collectSkillFiles(p));
 			if (resourceType === "themes") out.push(...collectThemeFiles(p, true));
 		}
@@ -308,10 +377,16 @@ function parseNpmName(source: string): string | null {
 	return versionAt === -1 ? spec : spec.slice(0, versionAt);
 }
 
-function parseGitSource(source: string): { host: string; repoPath: string } | null {
+function parseGitSource(
+	source: string,
+): { host: string; repoPath: string } | null {
 	let s = source.startsWith("git:") ? source.slice("git:".length) : source;
-	s = s.replace(/^https?:\/\//, "").replace(/^ssh:\/\//, "").replace(/^git:\/\//, "");
-	const match = s.match(/^git@([^:]+):(.+)$/) || s.match(/^(?:[^@/]+@)?([^/:]+)[:/](.+)$/);
+	s = s
+		.replace(/^https?:\/\//, "")
+		.replace(/^ssh:\/\//, "")
+		.replace(/^git:\/\//, "");
+	const match =
+		s.match(/^git@([^:]+):(.+)$/) || s.match(/^(?:[^@/]+@)?([^/:]+)[:/](.+)$/);
 	if (!match) return null;
 	let repoPath = match[2].replace(/\.git$/, "");
 	const refAt = repoPath.lastIndexOf("@");
@@ -319,7 +394,11 @@ function parseGitSource(source: string): { host: string; repoPath: string } | nu
 	return { host: match[1], repoPath };
 }
 
-function resolvePackageRoot(source: string, scope: "user" | "project", cwd: string): string | null {
+function resolvePackageRoot(
+	source: string,
+	scope: "user" | "project",
+	cwd: string,
+): string | null {
 	const agentDir = join(homedir(), ".pi", "agent");
 	const projectDir = join(cwd, ".pi");
 	const baseDir = scope === "project" ? projectDir : agentDir;
@@ -328,7 +407,13 @@ function resolvePackageRoot(source: string, scope: "user" | "project", cwd: stri
 	if (npmName) {
 		const managed = join(baseDir, "npm", "node_modules", ...npmName.split("/"));
 		if (existsSync(managed)) return managed;
-		const legacy = join(homedir(), ".npm-global", "lib", "node_modules", ...npmName.split("/"));
+		const legacy = join(
+			homedir(),
+			".npm-global",
+			"lib",
+			"node_modules",
+			...npmName.split("/"),
+		);
 		return existsSync(legacy) ? legacy : managed;
 	}
 
@@ -340,7 +425,12 @@ function resolvePackageRoot(source: string, scope: "user" | "project", cwd: stri
 	return resolve(baseDir, source);
 }
 
-function collectPackageResourceItems(packageRoot: string, resourceType: "extensions" | "skills" | "themes", source: string, enabledFilter: any): ResourceItem[] {
+function collectPackageResourceItems(
+	packageRoot: string,
+	resourceType: "extensions" | "skills" | "themes",
+	source: string,
+	enabledFilter: any,
+): ResourceItem[] {
 	if (!isDirectory(packageRoot)) return [];
 	if (Array.isArray(enabledFilter) && enabledFilter.length === 0) return [];
 
@@ -351,31 +441,66 @@ function collectPackageResourceItems(packageRoot: string, resourceType: "extensi
 
 	if (Array.isArray(manifestEntries)) {
 		const entries = manifestEntries
-			.filter((entry: any) => typeof entry === "string" && !entry.startsWith("!") && !entry.startsWith("+") && !entry.startsWith("-") && !entry.includes("*") && !entry.includes("?"))
+			.filter(
+				(entry: any) =>
+					typeof entry === "string" &&
+					!entry.startsWith("!") &&
+					!entry.startsWith("+") &&
+					!entry.startsWith("-") &&
+					!entry.includes("*") &&
+					!entry.includes("?"),
+			)
 			.map((entry: string) => resolve(packageRoot, entry));
 		paths = collectFilesFromPaths(entries, resourceType);
 	} else {
 		const conventionDir = join(packageRoot, resourceType);
-		if (resourceType === "extensions") paths = collectExtensionFiles(conventionDir);
+		if (resourceType === "extensions")
+			paths = collectExtensionFiles(conventionDir);
 		if (resourceType === "skills") paths = collectSkillFiles(conventionDir);
-		if (resourceType === "themes") paths = collectThemeFiles(conventionDir, true);
+		if (resourceType === "themes")
+			paths = collectThemeFiles(conventionDir, true);
 	}
 
-	return paths.map((path) => ({ path, source, baseDir: packageRoot, packageName: pkgName }));
+	return paths.map((path) => ({
+		path,
+		source,
+		baseDir: packageRoot,
+		packageName: pkgName,
+	}));
 }
 
 function readSettingsFile(path: string): any {
 	return readJson(path) ?? {};
 }
 
-function collectConfiguredResourceItems(settings: any, scope: "user" | "project", cwd: string, resourceType: "extensions" | "skills" | "themes"): ResourceItem[] {
-	const entries = Array.isArray(settings?.[resourceType]) ? settings[resourceType] : [];
+function collectConfiguredResourceItems(
+	settings: any,
+	scope: "user" | "project",
+	cwd: string,
+	resourceType: "extensions" | "skills" | "themes",
+): ResourceItem[] {
+	const entries = Array.isArray(settings?.[resourceType])
+		? settings[resourceType]
+		: [];
 	if (entries.length === 0) return [];
-	const baseDir = scope === "project" ? join(cwd, ".pi") : join(homedir(), ".pi", "agent");
+	const baseDir =
+		scope === "project" ? join(cwd, ".pi") : join(homedir(), ".pi", "agent");
 	const paths = entries
-		.filter((entry: any) => typeof entry === "string" && !entry.startsWith("!") && !entry.startsWith("+") && !entry.startsWith("-") && !entry.includes("*") && !entry.includes("?"))
+		.filter(
+			(entry: any) =>
+				typeof entry === "string" &&
+				!entry.startsWith("!") &&
+				!entry.startsWith("+") &&
+				!entry.startsWith("-") &&
+				!entry.includes("*") &&
+				!entry.includes("?"),
+		)
 		.map((entry: string) => resolve(baseDir, entry));
-	return collectFilesFromPaths(paths, resourceType).map((path) => ({ path, source: "local", baseDir }));
+	return collectFilesFromPaths(paths, resourceType).map((path) => ({
+		path,
+		source: "local",
+		baseDir,
+	}));
 }
 
 function collectAncestorAgentsSkillDirs(cwd: string): string[] {
@@ -391,34 +516,105 @@ function collectAncestorAgentsSkillDirs(cwd: string): string[] {
 	return dirs;
 }
 
-function collectStartupResourceItems(ctx: ExtensionContext): { extensions: ResourceItem[]; skills: ResourceItem[]; themes: ResourceItem[] } {
+function collectStartupResourceItems(ctx: ExtensionContext): {
+	extensions: ResourceItem[];
+	skills: ResourceItem[];
+	themes: ResourceItem[];
+} {
 	const cwd = ctx.cwd;
 	const agentDir = join(homedir(), ".pi", "agent");
 	const projectDir = join(cwd, ".pi");
 	const globalSettings = readSettingsFile(join(agentDir, "settings.json"));
 	const projectSettings = readSettingsFile(join(projectDir, "settings.json"));
-	const result = { extensions: [] as ResourceItem[], skills: [] as ResourceItem[], themes: [] as ResourceItem[] };
+	const result = {
+		extensions: [] as ResourceItem[],
+		skills: [] as ResourceItem[],
+		themes: [] as ResourceItem[],
+	};
 
 	// Top-level configured paths.
 	for (const resourceType of ["extensions", "skills", "themes"] as const) {
-		result[resourceType].push(...collectConfiguredResourceItems(projectSettings, "project", cwd, resourceType));
-		result[resourceType].push(...collectConfiguredResourceItems(globalSettings, "user", cwd, resourceType));
+		result[resourceType].push(
+			...collectConfiguredResourceItems(
+				projectSettings,
+				"project",
+				cwd,
+				resourceType,
+			),
+		);
+		result[resourceType].push(
+			...collectConfiguredResourceItems(
+				globalSettings,
+				"user",
+				cwd,
+				resourceType,
+			),
+		);
 	}
 
 	// Auto-discovered project/user resources, matching pi's standard locations.
-	result.extensions.push(...collectExtensionFiles(join(projectDir, "extensions")).map((path) => ({ path, source: "auto", baseDir: projectDir })));
-	result.extensions.push(...collectExtensionFiles(join(agentDir, "extensions")).map((path) => ({ path, source: "auto", baseDir: agentDir })));
-	result.skills.push(...collectSkillFiles(join(projectDir, "skills")).map((path) => ({ path, source: "auto", baseDir: projectDir })));
+	result.extensions.push(
+		...collectExtensionFiles(join(projectDir, "extensions")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: projectDir,
+		})),
+	);
+	result.extensions.push(
+		...collectExtensionFiles(join(agentDir, "extensions")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: agentDir,
+		})),
+	);
+	result.skills.push(
+		...collectSkillFiles(join(projectDir, "skills")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: projectDir,
+		})),
+	);
 	for (const dir of collectAncestorAgentsSkillDirs(cwd)) {
-		result.skills.push(...collectSkillFiles(dir, false).map((path) => ({ path, source: "auto", baseDir: dirname(dir) })));
+		result.skills.push(
+			...collectSkillFiles(dir, false).map((path) => ({
+				path,
+				source: "auto",
+				baseDir: dirname(dir),
+			})),
+		);
 	}
-	result.skills.push(...collectSkillFiles(join(agentDir, "skills")).map((path) => ({ path, source: "auto", baseDir: agentDir })));
-	result.skills.push(...collectSkillFiles(join(homedir(), ".agents", "skills"), false).map((path) => ({ path, source: "auto", baseDir: join(homedir(), ".agents") })));
-	result.themes.push(...collectThemeFiles(join(projectDir, "themes")).map((path) => ({ path, source: "auto", baseDir: projectDir })));
-	result.themes.push(...collectThemeFiles(join(agentDir, "themes")).map((path) => ({ path, source: "auto", baseDir: agentDir })));
+	result.skills.push(
+		...collectSkillFiles(join(agentDir, "skills")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: agentDir,
+		})),
+	);
+	result.skills.push(
+		...collectSkillFiles(join(homedir(), ".agents", "skills"), false).map(
+			(path) => ({ path, source: "auto", baseDir: join(homedir(), ".agents") }),
+		),
+	);
+	result.themes.push(
+		...collectThemeFiles(join(projectDir, "themes")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: projectDir,
+		})),
+	);
+	result.themes.push(
+		...collectThemeFiles(join(agentDir, "themes")).map((path) => ({
+			path,
+			source: "auto",
+			baseDir: agentDir,
+		})),
+	);
 
 	// Installed packages. Project settings win visually by being collected first; labels are deduped later.
-	for (const [settings, scope] of [[projectSettings, "project"], [globalSettings, "user"]] as const) {
+	for (const [settings, scope] of [
+		[projectSettings, "project"],
+		[globalSettings, "user"],
+	] as const) {
 		const packages = Array.isArray(settings?.packages) ? settings.packages : [];
 		for (const pkg of packages) {
 			const source = typeof pkg === "string" ? pkg : pkg?.source;
@@ -426,9 +622,30 @@ function collectStartupResourceItems(ctx: ExtensionContext): { extensions: Resou
 			const packageRoot = resolvePackageRoot(source, scope, cwd);
 			if (!packageRoot) continue;
 			const filter = pkg && typeof pkg === "object" ? pkg : undefined;
-			result.extensions.push(...collectPackageResourceItems(packageRoot, "extensions", source, filter?.extensions));
-			result.skills.push(...collectPackageResourceItems(packageRoot, "skills", source, filter?.skills));
-			result.themes.push(...collectPackageResourceItems(packageRoot, "themes", source, filter?.themes));
+			result.extensions.push(
+				...collectPackageResourceItems(
+					packageRoot,
+					"extensions",
+					source,
+					filter?.extensions,
+				),
+			);
+			result.skills.push(
+				...collectPackageResourceItems(
+					packageRoot,
+					"skills",
+					source,
+					filter?.skills,
+				),
+			);
+			result.themes.push(
+				...collectPackageResourceItems(
+					packageRoot,
+					"themes",
+					source,
+					filter?.themes,
+				),
+			);
 		}
 	}
 
@@ -442,14 +659,18 @@ function readSkillName(skillPath: string): string {
 		const source = frontMatter?.[1] ?? content.slice(0, 1200);
 		const match = source.match(/^name:\s*["']?([^"'\n#]+)/m);
 		if (match?.[1]) return match[1].trim();
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	if (basename(skillPath) === "SKILL.md") return basename(dirname(skillPath));
 	return compactLabel(basename(skillPath));
 }
 
 function readThemeName(themePath: string): string {
 	const themeJson = readJson(themePath);
-	return typeof themeJson?.name === "string" ? themeJson.name : compactLabel(basename(themePath));
+	return typeof themeJson?.name === "string"
+		? themeJson.name
+		: compactLabel(basename(themePath));
 }
 
 function extensionLabel(item: ResourceItem): string {
@@ -462,7 +683,8 @@ function extensionLabel(item: ResourceItem): string {
 		}
 		return `${item.packageName}:${withoutExt.replace(/^extensions\//, "")}`;
 	}
-	if (/^index\.(ts|js)$/.test(basename(item.path))) return basename(dirname(item.path));
+	if (/^index\.(ts|js)$/.test(basename(item.path)))
+		return basename(dirname(item.path));
 	return compactLabel(basename(item.path));
 }
 
@@ -470,12 +692,21 @@ function shortExtensionLabel(label: string): string {
 	return label.split(":")[0] || label;
 }
 
-function getStartupResources(ctx: ExtensionContext, pi?: ExtensionAPI): StartupResources {
+function getStartupResources(
+	ctx: ExtensionContext,
+	pi?: ExtensionAPI,
+): StartupResources {
 	const items = collectStartupResourceItems(ctx);
 
-	const extensions = uniqueSorted(items.extensions.map(extensionLabel).map(shortExtensionLabel));
-	const skills = uniqueSorted(items.skills.map((item) => readSkillName(item.path)));
-	const themes = uniqueSorted(items.themes.map((item) => readThemeName(item.path)));
+	const extensions = uniqueSorted(
+		items.extensions.map(extensionLabel).map(shortExtensionLabel),
+	);
+	const skills = uniqueSorted(
+		items.skills.map((item) => readSkillName(item.path)),
+	);
+	const themes = uniqueSorted(
+		items.themes.map((item) => readThemeName(item.path)),
+	);
 
 	// pi already knows skill commands and registered themes; use them as a final safety net.
 	try {
@@ -484,14 +715,22 @@ function getStartupResources(ctx: ExtensionContext, pi?: ExtensionAPI): StartupR
 				skills.push(command.name.slice("skill:".length));
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	try {
 		for (const themeInfo of ctx.ui.getAllThemes()) {
-			if (themeInfo.path && themeInfo.name !== "dark" && themeInfo.name !== "light") {
+			if (
+				themeInfo.path &&
+				themeInfo.name !== "dark" &&
+				themeInfo.name !== "light"
+			) {
 				themes.push(themeInfo.name);
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 
 	return {
 		extensions: uniqueSorted(extensions),
@@ -532,7 +771,11 @@ function buildPiArt(theme: Theme): string[] {
 
 type CardRow = { kind: "line"; text: string } | { kind: "separator" };
 
-function wrapResourceList(items: string[], maxWidth = 52, cardWidth?: number): string[] {
+function wrapResourceList(
+	items: string[],
+	maxWidth = 52,
+	cardWidth?: number,
+): string[] {
 	if (items.length === 0) return ["  —"];
 
 	// Use cardWidth if provided, otherwise use maxWidth
@@ -554,18 +797,34 @@ function wrapResourceList(items: string[], maxWidth = 52, cardWidth?: number): s
 	return lines;
 }
 
-function buildBorderedCard(theme: Theme, titleRaw: string, rows: CardRow[], minContentWidth = 18): string[] {
+function buildBorderedCard(
+	theme: Theme,
+	titleRaw: string,
+	rows: CardRow[],
+	minContentWidth = 18,
+): string[] {
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 	const bdr = (t: string) => theme.fg("borderMuted", t);
-	const innerLines = rows.filter((row): row is { kind: "line"; text: string } => row.kind === "line").map((row) => row.text);
-	const maxLen = Math.max(minContentWidth, titleRaw.length, ...innerLines.map(visibleLen));
+	const innerLines = rows
+		.filter((row): row is { kind: "line"; text: string } => row.kind === "line")
+		.map((row) => row.text);
+	const maxLen = Math.max(
+		minContentWidth,
+		titleRaw.length,
+		...innerLines.map(visibleLen),
+	);
 	const innerW = maxLen + 2;
 
 	const titleStyled = theme.bold(val(titleRaw, "accent"));
 	const leftDashes = Math.max(0, Math.floor((innerW - titleRaw.length) / 2));
 	const rightDashes = Math.max(0, innerW - titleRaw.length - leftDashes);
 
-	const top = bdr("╭") + bdr("─".repeat(leftDashes)) + titleStyled + bdr("─".repeat(rightDashes)) + bdr("╮");
+	const top =
+		bdr("╭") +
+		bdr("─".repeat(leftDashes)) +
+		titleStyled +
+		bdr("─".repeat(rightDashes)) +
+		bdr("╮");
 	const divider = bdr("├") + bdr("─".repeat(innerW)) + bdr("┤");
 	const bottom = bdr("╰") + bdr("─".repeat(innerW)) + bdr("╯");
 
@@ -574,7 +833,9 @@ function buildBorderedCard(theme: Theme, titleRaw: string, rows: CardRow[], minC
 		if (row.kind === "separator") {
 			lines.push(divider);
 		} else {
-			lines.push(bdr("│") + " " + padVisible(row.text, maxLen) + " " + bdr("│"));
+			lines.push(
+				bdr("│") + " " + padVisible(row.text, maxLen) + " " + bdr("│"),
+			);
 		}
 	}
 	lines.push(bottom);
@@ -583,7 +844,9 @@ function buildBorderedCard(theme: Theme, titleRaw: string, rows: CardRow[], minC
 
 function buildAgentCard(ctx: ExtensionContext, theme: Theme): string[] {
 	const themeName = theme.name
-		? theme.name.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+		? theme.name
+				.replace(/-/g, " ")
+				.replace(/\b\w/g, (c: string) => c.toUpperCase())
 		: "Default";
 	const version = getPiVersion();
 	const modelName = ctx.model?.name || ctx.model?.id || "—";
@@ -591,27 +854,55 @@ function buildAgentCard(ctx: ExtensionContext, theme: Theme): string[] {
 	const label = (t: string) => theme.fg("muted", t);
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 
-	return buildBorderedCard(theme, " (pi) CODING AGENT ", [
-		{ kind: "line", text: `${label("version ")}  ${val(version, "mdCode")}` },
-		{ kind: "line", text: `${label("model   ")}  ${val(modelName, "mdHeading")}` },
-		{ kind: "line", text: `${label("theme   ")}  ${val(themeName)}` },
-	], 25);
+	return buildBorderedCard(
+		theme,
+		" (pi) CODING AGENT ",
+		[
+			{ kind: "line", text: `${label("version ")}  ${val(version, "mdCode")}` },
+			{
+				kind: "line",
+				text: `${label("model   ")}  ${val(modelName, "mdHeading")}`,
+			},
+			{ kind: "line", text: `${label("theme   ")}  ${val(themeName)}` },
+		],
+		25,
+	);
 }
 
-function buildResourcesCard(theme: Theme, resources: StartupResources, terminalWidth?: number): string[] {
+function buildResourcesCard(
+	theme: Theme,
+	resources: StartupResources,
+	terminalWidth?: number,
+): string[] {
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 	const section = (t: string) => theme.bold(val(`[${t}]`, "mdHeading"));
 
-	return buildBorderedCard(theme, " RESOURCES ", [
-		{ kind: "line", text: section("Extensions") },
-		...wrapResourceList(resources.extensions, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "syntaxFunction") })),
-		{ kind: "separator" },
-		{ kind: "line", text: section("Skills") },
-		...wrapResourceList(resources.skills, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "syntaxString") })),
-		{ kind: "separator" },
-		{ kind: "line", text: section("Themes") },
-		...wrapResourceList(resources.themes, 52, terminalWidth).map((text) => ({ kind: "line" as const, text: val(text, "text") })),
-	], 30);
+	return buildBorderedCard(
+		theme,
+		" RESOURCES ",
+		[
+			{ kind: "line", text: section("Extensions") },
+			...wrapResourceList(resources.extensions, 52, terminalWidth).map(
+				(text) => ({
+					kind: "line" as const,
+					text: val(text, "syntaxFunction"),
+				}),
+			),
+			{ kind: "separator" },
+			{ kind: "line", text: section("Skills") },
+			...wrapResourceList(resources.skills, 52, terminalWidth).map((text) => ({
+				kind: "line" as const,
+				text: val(text, "syntaxString"),
+			})),
+			{ kind: "separator" },
+			{ kind: "line", text: section("Themes") },
+			...wrapResourceList(resources.themes, 52, terminalWidth).map((text) => ({
+				kind: "line" as const,
+				text: val(text, "text"),
+			})),
+		],
+		30,
+	);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -651,8 +942,16 @@ function truncateToWidth(str: string, maxW: number): string {
 	let inEsc = false;
 	let result = "";
 	for (const ch of str) {
-		if (ch === "\x1b") { inEsc = true; result += ch; continue; }
-		if (inEsc) { result += ch; if (/[a-zA-Z]/.test(ch)) inEsc = false; continue; }
+		if (ch === "\x1b") {
+			inEsc = true;
+			result += ch;
+			continue;
+		}
+		if (inEsc) {
+			result += ch;
+			if (/[a-zA-Z]/.test(ch)) inEsc = false;
+			continue;
+		}
 		const cw = strWidth(ch);
 		if (w + cw > maxW) break;
 		result += ch;
@@ -661,7 +960,12 @@ function truncateToWidth(str: string, maxW: number): string {
 	return result;
 }
 
-function renderColumns(left: string[], right: string[], width: number, gap = 4): string[] {
+function renderColumns(
+	left: string[],
+	right: string[],
+	width: number,
+	gap = 4,
+): string[] {
 	const leftWidth = maxVisibleWidth(left);
 	const rightWidth = maxVisibleWidth(right);
 	const totalWidth = leftWidth + gap + rightWidth;
@@ -683,8 +987,6 @@ function renderColumns(left: string[], right: string[], width: number, gap = 4):
 	out.push("");
 	return out;
 }
-
-
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Main banner renderer
