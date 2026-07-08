@@ -3,7 +3,7 @@
  *
  * Left: large π ASCII art with gradient colours
  * Right: session info panel, right-aligned
- * Uses full terminal width. Hides on first input.
+ * Uses startup header to fill available terminal height. Hides on first input.
  */
 
 import type {
@@ -308,15 +308,13 @@ function resolveExtensionEntries(dir: string): string[] | null {
 	return null;
 }
 
-function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
+function collectExtensionFiles(dir: string): string[] {
 	if (!isDirectory(dir)) return [];
-	const visited = _visited ?? new Set<string>();
-	const resolved = resolve(dir);
-	if (visited.has(resolved)) return [];
-	visited.add(resolved);
+
+	// Match pi's extension discovery: a directory with package.json `pi.extensions`
+	// or `index.ts/js` is itself one extension entry; otherwise inspect one level.
 	const rootEntries = resolveExtensionEntries(dir);
-	if (rootEntries)
-		return collectFilesFromPaths(rootEntries, "extensions", visited);
+	if (rootEntries) return rootEntries;
 
 	const out: string[] = [];
 	try {
@@ -327,10 +325,7 @@ function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
 				out.push(fullPath);
 			} else if (entry.isDirectory()) {
 				const resolvedEntries = resolveExtensionEntries(fullPath);
-				if (resolvedEntries)
-					out.push(
-						...collectFilesFromPaths(resolvedEntries, "extensions", visited),
-					);
+				if (resolvedEntries) out.push(...resolvedEntries);
 			}
 		}
 	} catch {
@@ -342,20 +337,14 @@ function collectExtensionFiles(dir: string, _visited?: Set<string>): string[] {
 function collectFilesFromPaths(
 	paths: string[],
 	resourceType: "extensions" | "skills" | "themes",
-	_visited?: Set<string>,
 ): string[] {
-	const visited = _visited ?? new Set<string>();
 	const out: string[] = [];
 	for (const p of paths) {
 		if (!existsSync(p)) continue;
 		if (isFile(p)) {
 			out.push(p);
 		} else if (isDirectory(p)) {
-			const resolved = resolve(p);
-			if (visited.has(resolved)) continue;
-			visited.add(resolved);
-			if (resourceType === "extensions")
-				out.push(...collectExtensionFiles(p, visited));
+			if (resourceType === "extensions") out.push(...collectExtensionFiles(p));
 			if (resourceType === "skills") out.push(...collectSkillFiles(p));
 			if (resourceType === "themes") out.push(...collectThemeFiles(p, true));
 		}
@@ -677,7 +666,7 @@ function extensionLabel(item: ResourceItem): string {
 	if (item.packageName && item.baseDir) {
 		const rel = relative(item.baseDir, item.path).replace(/\\/g, "/");
 		const withoutExt = compactLabel(rel);
-		if (withoutExt === "extensions/index") return item.packageName;
+		if (!withoutExt || withoutExt === "extensions/index") return item.packageName;
 		if (withoutExt.startsWith("extensions/") && withoutExt.endsWith("/index")) {
 			return `${item.packageName}:${withoutExt.slice("extensions/".length, -"/index".length)}`;
 		}
@@ -756,13 +745,87 @@ const PI_RAW = [
 	"░██           ",
 ];
 
-function buildPiArt(theme: Theme): string[] {
-	return PI_RAW.map((row) =>
-		row
-			.split("")
-			.map((ch) => (ch === " " ? " " : theme.fg("accent", ch)))
-			.join(""),
-	);
+const TRUECOLOR =
+	/truecolor|24bit/i.test(process.env["COLORTERM"] ?? "") ||
+	(process.env["TERM"] ?? "").includes("256color") ||
+	["iTerm.app", "WezTerm", "vscode"].includes(
+		process.env["TERM_PROGRAM"] ?? "",
+	) ||
+	process.env["WT_SESSION"] !== undefined;
+
+const LOGO_SETTLE_FRAME = 90;
+const CHAR_FADE_FRAMES = 22;
+const LOGO_FRAME_MS = 16;
+
+type AnimationStyle = "vertical-down";
+
+function rgb(r: number, g: number, b: number, text: string): string {
+	return `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
+}
+
+function gray(value: number, text: string): string {
+	return rgb(value, value, value, text);
+}
+
+function lerp(a: number, b: number, t: number): number {
+	return a + (b - a) * t;
+}
+
+function computeRevealAt(
+	_x: number,
+	y: number,
+	_rows: number,
+	style: AnimationStyle = "vertical-down",
+): number {
+	switch (style) {
+		case "vertical-down":
+			return y * 5.5;
+	}
+}
+
+function buildAnimatedArt(
+	lines: string[],
+	theme: Theme,
+	frame = LOGO_SETTLE_FRAME,
+): string[] {
+	if (frame >= LOGO_SETTLE_FRAME) {
+		return lines.map((row) =>
+			Array.from(row)
+				.map((ch) => (ch === " " ? " " : theme.fg("accent", ch)))
+				.join(""),
+		);
+	}
+
+	const rows = lines.length;
+	return lines.map((row, y) => {
+		let result = "";
+		const chars = Array.from(row);
+		for (let x = 0; x < chars.length; x++) {
+			const ch = chars[x] ?? "";
+			if (ch === " ") {
+				result += " ";
+				continue;
+			}
+
+			const revealAt = computeRevealAt(x, y, rows);
+			const age = frame - revealAt;
+			if (age <= 0) {
+				result += " ";
+				continue;
+			}
+
+			if (!TRUECOLOR) {
+				result += theme.fg("accent", ch);
+				continue;
+			}
+
+			const t = Math.min(1, age / CHAR_FADE_FRAMES);
+			const eased = 1 - (1 - t) * (1 - t);
+			const brightness = Math.floor(lerp(50, 255, eased));
+			result += gray(brightness, ch);
+		}
+		return result;
+	});
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -988,51 +1051,109 @@ function renderColumns(
 	return out;
 }
 
+
 /* ──────────────────────────────────────────────────────────────────────────────
    Main banner renderer
+   ────────────────────────────────────────────────────────────────────────────── */
+
+function renderFullscreen(lines: string[], width: number, height: number): string[] {
+	const safeLines = lines.map((line) => truncateToWidth(line, width));
+	if (height <= 0) return safeLines;
+	if (safeLines.length >= height) return safeLines.slice(0, height);
+
+	const remaining = height - safeLines.length;
+	const topPad = Math.floor(remaining / 2);
+	const bottomPad = remaining - topPad;
+	return [
+		...Array.from({ length: topPad }, () => ""),
+		...safeLines,
+		...Array.from({ length: bottomPad }, () => ""),
+	];
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Animation state — stored on globalThis Symbol to survive /reload
+   ────────────────────────────────────────────────────────────────────────────── */
+
+const SYM_FRAME = Symbol.for("beautiful-pi:animFrame");
+const SYM_INTERVAL = Symbol.for("beautiful-pi:animInterval");
+const SYM_TUI = Symbol.for("beautiful-pi:animTui");
+const g = globalThis as any;
+
+function initFrame(): void {
+	if (g[SYM_INTERVAL]) return;
+	g[SYM_FRAME] = 0;
+	g[SYM_INTERVAL] = setInterval(() => {
+		g[SYM_FRAME]++;
+		if (g[SYM_FRAME] >= LOGO_SETTLE_FRAME) {
+			clearInterval(g[SYM_INTERVAL]);
+			g[SYM_INTERVAL] = undefined;
+		}
+		if (g[SYM_TUI]) g[SYM_TUI].requestRender();
+	}, LOGO_FRAME_MS);
+}
+
+function stopAnim(): void {
+	if (g[SYM_INTERVAL]) {
+		clearInterval(g[SYM_INTERVAL]);
+		g[SYM_INTERVAL] = undefined;
+	}
+	g[SYM_TUI] = undefined;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Factory builders
+   ────────────────────────────────────────────────────────────────────────────── */
+
+function buildHeaderFactory(
+	artLines: string[],
+	resources: StartupResources,
+	ctx: ExtensionContext,
+) {
+	return (tui: any, theme: Theme) => {
+		g[SYM_TUI] = tui;
+		return {
+			invalidate() {},
+			dispose() {},
+			render(width: number): string[] {
+				const logo = buildAnimatedArt(artLines, theme, g[SYM_FRAME] ?? LOGO_SETTLE_FRAME);
+				const left = buildLeftColumn(logo, buildAgentCard(ctx, theme));
+				const right = buildResourcesCard(theme, resources, width);
+				const content = renderColumns(left, right, width);
+				const termRows = (tui as any).terminal?.rows ?? content.length;
+				return renderFullscreen(content, width, Math.max(0, termRows - 3));
+			},
+		};
+	};
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   showBanner — fullscreen via setHeader (Archimedes pattern)
    ────────────────────────────────────────────────────────────────────────────── */
 
 export function showBanner(ctx: ExtensionContext, pi?: ExtensionAPI) {
 	if (!ctx.hasUI) return;
 
 	const customArt = loadArt();
-	const isCustom = customArt !== DEFAULT_ART;
+	const artLines = customArt !== DEFAULT_ART
+		? (() => {
+				const split = customArt.split("\n");
+				const i = split.findIndex((l: string) => l.trim() !== "");
+				return i >= 0 ? split.slice(i) : split;
+			})()
+		: PI_RAW;
 	const resources = getStartupResources(ctx, pi);
 
-	if (isCustom) {
-		const split = customArt.split("\n");
-		const firstNonEmpty = split.findIndex((l: string) => l.trim() !== "");
-		const lines = firstNonEmpty >= 0 ? split.slice(firstNonEmpty) : split;
+	initFrame();
 
-		ctx.ui.setWidget(
-			"agent-banner",
-			(_tui, theme) => ({
-				invalidate() {},
-				render(width: number): string[] {
-					const rendered = lines.map((line) => theme.fg("accent", line));
-					const left = buildLeftColumn(rendered, buildAgentCard(ctx, theme));
-					const right = buildResourcesCard(theme, resources, width);
-					return renderColumns(left, right, width);
-				},
-			}),
-			{ placement: "aboveEditor" },
-		);
-		return;
-	}
+	const headerFactory = buildHeaderFactory(artLines, resources, ctx);
 
-	ctx.ui.setWidget(
-		"agent-banner",
-		(_tui, theme) => ({
-			invalidate() {},
-			render(width: number): string[] {
-				const piArt = buildPiArt(theme);
-				const left = buildLeftColumn(piArt, buildAgentCard(ctx, theme));
-				const right = buildResourcesCard(theme, resources, width);
-				return renderColumns(left, right, width);
-			},
-		}),
-		{ placement: "aboveEditor" },
-	);
+	// Immediate set + persistent retry to survive reload resetExtensionUI.
+	ctx.ui.setHeader(headerFactory);
+	const RETRY_MS = 400;
+	const RETRY_DURATION = 4000;
+	const retryId = setInterval(() => ctx.ui.setHeader(headerFactory), RETRY_MS);
+	setTimeout(() => clearInterval(retryId), RETRY_DURATION);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -1050,23 +1171,26 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
 		bannerCtx = ctx;
 		bannerVisible = true;
-		if (loadSettings().showBanner) {
-			showBanner(ctx, pi);
-		}
+		if (loadSettings().showBanner) showBanner(ctx, pi);
 	});
 
 	pi.on("session_switch", async (_event, ctx: ExtensionContext) => {
 		bannerCtx = ctx;
 		bannerVisible = true;
-		if (loadSettings().showBanner) {
-			showBanner(ctx, pi);
-		}
+		if (loadSettings().showBanner) showBanner(ctx, pi);
 	});
 
 	pi.on("input", async () => {
 		if (bannerCtx?.hasUI) {
-			bannerCtx.ui.setWidget("agent-banner", undefined);
-			bannerVisible = false;
+			bannerCtx.ui.setHeader(undefined);
 		}
+		bannerVisible = false;
+		stopAnim();
+	});
+
+	pi.on("session_shutdown", async () => {
+		stopAnim();
+		bannerCtx = null;
+		bannerVisible = false;
 	});
 }

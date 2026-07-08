@@ -64,8 +64,11 @@ export function hasNerdFonts(): boolean {
   if (process.env["POWERLINE_NERD_FONTS"] === "1") return true;
   if (process.env["POWERLINE_NERD_FONTS"] === "0") return false;
 
-  // Ghostty env var survives into tmux
+  // Terminal-specific env vars (survive tmux)
   if (process.env["GHOSTTY_RESOURCES_DIR"]) return true;
+  if (process.env["ALACRITTY_WINDOW_ID"]) return true;
+  if (process.env["KITTY_WINDOW_ID"]) return true;
+  if (process.env["VSCODE_INJECTION"]) return true;
 
   const term = (process.env["TERM_PROGRAM"] ?? "").toLowerCase();
   return ["iterm", "wezterm", "kitty", "ghostty", "alacritty"].some(t => term.includes(t));
@@ -83,18 +86,28 @@ export interface IconSet {
   input: string;
   output: string;
   cache: string;
+  ahead: string;
+  behind: string;
+  staged: string;
+  modified: string;
+  untracked: string;
 }
 
 export const NERD_ICONS: IconSet = {
-  pi:     "\uE22C",   // nf-oct-pi
-  folder: "\uF115",   // nf-fa-folder_open
-  git:    "\uF1D3",   // nf-fa-git
-  branch: "\uF418",   // nf-oct-git_branch
-  time:   "\uF017",   // nf-fa-clock_o
-  cost:   "\uF155",   // nf-fa-dollar
-  input:  "\uF090",   // nf-fa-sign_in
-  output: "\uF08B",   // nf-fa-sign_out
-  cache:  "\uF1C0",   // nf-fa-database
+  pi:       "\uE22C",   // nf-oct-pi
+  folder:   "\uF115",   // nf-fa-folder_open
+  git:      "\uF1D3",   // nf-fa-git
+  branch:   "\uF418",   // nf-oct-git_branch
+  time:     "\uF017",   // nf-fa-clock_o
+  cost:     "\uF155",   // nf-fa-dollar
+  input:    "\uF062",   // nf-fa-arrow_up       ↑ (tokens in)
+  output:   "\uF063",   // nf-fa-arrow_down     ↓ (tokens out)
+  cache:    "\uF1C0",   // nf-fa-database
+  ahead:    "\u21E1",   // ⇡  (p10k standard)
+  behind:   "\u21E3",   // ⇣  (p10k standard)
+  staged:   "+",         // +  (p10k standard)
+  modified: "!",         // !  (p10k standard)
+  untracked:"?",         // ?  (p10k standard)
 };
 
 export const GITHUB_ICON  = "\uF113"; // nf-fa-github_alt (same as p10k VCS_GIT_GITHUB_ICON)
@@ -110,6 +123,11 @@ export const ASCII_ICONS: IconSet = {
   input:  "\u2191",    // ↑
   output: "\u2192",    // ↓ (reuse arrow)
   cache:  "R",
+  ahead:    "\u21E1",  // ⇡
+  behind:   "\u21E3",  // ⇣
+  staged:   "\u271A",  // ✚
+  modified: "!",
+  untracked:"?",
 };
 
 export function getIcons(): IconSet {

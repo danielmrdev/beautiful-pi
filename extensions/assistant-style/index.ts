@@ -7,7 +7,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AssistantMessageComponent, CustomMessageComponent, SkillInvocationMessageComponent } from "@earendil-works/pi-coding-agent";
 import { Markdown, Spacer, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { loadSettings, safeBg, safeFg } from "../shared/settings.ts";
+import { loadSettings, safeFg } from "../shared/settings.ts";
 import { hasNerdFonts } from "../shared/icons.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────
@@ -37,11 +37,11 @@ function renderRailLine(line: string, width: number, railColorToken: string, fal
   return `${prefix}${truncateToWidth(line, contentWidth, "", true)}`;
 }
 
-function renderBgLine(line: string, width: number, bgToken = "customMessageBg", fallbackColor = "selectedBg"): string {
+function renderLine(line: string, width: number): string {
   const safeWidth = Math.max(1, Math.floor(width));
   const content = truncateToWidth(line, safeWidth, "", true);
   const padding = Math.max(0, safeWidth - visibleWidth(content));
-  return safeBg(_theme, bgToken, fallbackColor, `${content}${" ".repeat(padding)}`);
+  return content + " ".repeat(padding);
 }
 
 // ── Agent text block ──────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
       const safeWidth = Math.max(1, Math.floor(width));
       const lines = trimEdgeBlankLines(md.render(safeWidth));
       const body = lines.length > 0 ? lines : [""];
-      return body.map(line => renderBgLine(line, safeWidth));
+      return body.map(line => renderLine(line, safeWidth));
     },
     invalidate() { md.invalidate?.(); },
   };
@@ -62,7 +62,7 @@ function createAgentMarkdownBlock(text: string, markdownTheme: unknown) {
 function createAgentTextLine(text: string) {
   return {
     render(width: number): string[] {
-      return [renderBgLine(text, Math.max(1, Math.floor(width)), "toolErrorBg", "selectedBg")];
+      return [renderLine(text, Math.max(1, Math.floor(width)))];
     },
     invalidate() {},
   };

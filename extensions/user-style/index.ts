@@ -15,8 +15,8 @@ let _theme: any = null;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const RAIL      = "┃";
-const RAIL_SEP  = " ";
-const RAIL_W    = visibleWidth(RAIL + RAIL_SEP); // 2
+const RAIL_SEP  = "";
+const RAIL_W    = visibleWidth(RAIL + RAIL_SEP); // 1
 
 // OSC 133 semantic zone markers added by UserMessageComponent
 const OSC_START = "\x1b]133;A\x07";

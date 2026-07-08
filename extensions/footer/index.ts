@@ -179,11 +179,11 @@ function formatGit(
 		: ` ${icons.branch} `;
 	add(gitPrefix + state.branch, "accent");
 
-	if (state.behind > 0) add(` ⇣${state.behind}`, "error");
-	if (state.ahead > 0) add(` ⇡${state.ahead}`, "success");
-	if (state.staged > 0) add(` ✚${state.staged}`, "success");
-	if (state.modified > 0) add(` !${state.modified}`, "warning");
-	if (state.untracked > 0) add(` ?${state.untracked}`, "dim");
+	if (state.ahead > 0) add(` ${icons.ahead}${state.ahead}`, "success");
+	if (state.behind > 0) add(` ${icons.behind}${state.behind}`, "error");
+	if (state.staged > 0) add(` ${icons.staged}${state.staged}`, "success");
+	if (state.modified > 0) add(` ${icons.modified}${state.modified}`, "warning");
+	if (state.untracked > 0) add(` ${icons.untracked}${state.untracked}`, "dim");
 
 	return { text, width };
 }
@@ -208,18 +208,6 @@ function bgLine(_theme: any, content: string, width: number): string {
 
 // Like bgLine but uses ─ at edges and for trailing fill (border style)
 // borderFn is the editor's live borderColor function
-function bgBorderLine(
-	borderFn: (s: string) => string,
-	content: string,
-	width: number,
-): string {
-	const innerW = width - 2;
-	const c = truncateToWidth(content, innerW);
-	const cW = visibleWidth(c);
-	const trail = cW < innerW ? borderFn("─".repeat(innerW - cW)) : "";
-	return borderFn("─") + c + trail + borderFn("─");
-}
-
 // ── Extension ─────────────────────────────────────────────────────────────────
 
 // Persists across /reload — only reset on true new/startup session
@@ -293,242 +281,113 @@ export default function (pi: ExtensionAPI) {
 			});
 		}
 
-		// ── ABOVE EDITOR: stats widget ──────────────────────────────────────────
+		// Shared Symbol for session start (readable by editor for timer in └─┘)
+	const SYM_SS = Symbol.for("beautiful-pi:wgtSessionStart");
+	(globalThis as any)[SYM_SS] = sessionStart;
 
-		ctx.ui.setWidget(
-			"stats-bar",
-			(tui: any, theme: any) => {
-				// Track the last rendered minute so we only re-render when it actually changes
-				let lastRenderedMinute = -1;
-				const timer = setInterval(() => {
-					const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-					const currentMinute = Math.floor(elapsed / 60);
-					if (currentMinute !== lastRenderedMinute) {
-						lastRenderedMinute = currentMinute;
-						tui.requestRender();
+	// ── ABOVE EDITOR: stats widget (2 lines) ─────────────────────────────
+
+	ctx.ui.setWidget(
+		"stats-bar",
+		(tui: any, theme: any) => {
+			const minuteTimer = setInterval(() => {
+				const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+				const curMin = Math.floor(elapsed / 60);
+				if (curMin !== (minuteTimer as any)._lastMin) {
+					(minuteTimer as any)._lastMin = curMin;
+					tui.requestRender();
+				}
+			}, 30_000);
+
+			return {
+				dispose() { clearInterval(minuteTimer); },
+				invalidate() {},
+				render(width: number): string[] {
+					const icons = getIcons();
+					const fullModelId = ctx.model?.id ?? "no-model";
+					const modelId = fullModelId
+						.replace(/^.*\//, "")
+						.replace(/-\d{8}$/, "")
+						.replace(/@.*$/, "") as string;
+
+					const thinkingLevel = pi.getThinkingLevel();
+					const thinkingText = thinkingLevel
+						? getThinkingText(thinkingLevel)
+						: undefined;
+
+					// Context usage
+					let contextPercent = 0, contextWindow = 0;
+					const cu = ctx.getContextUsage();
+					if (cu) {
+						contextPercent = Math.round(((cu as any).percent ?? 0) * 10) / 10;
+						contextWindow = (cu as any).contextWindow ?? 0;
 					}
-				}, 30_000);
 
-				return {
-					dispose() {
-						clearInterval(timer);
-					},
-					invalidate() {},
-					render(width: number): string[] {
-						// Token stats
-						let totalInput = 0,
-							totalOutput = 0,
-							totalCacheRead = 0,
-							totalCost = 0;
-						for (const entry of ctx.sessionManager.getEntries()) {
-							if (
-								entry.type === "message" &&
-								entry.message.role === "assistant"
-							) {
-								const m = entry.message as any;
-								totalInput += m.usage.input;
-								totalOutput += m.usage.output;
-								totalCacheRead += m.usage.cacheRead;
-								totalCost += m.usage.cost.total;
+					// Progress bar
+					const barTotal = 12;
+					const barFilled = Math.min(barTotal, Math.round((contextPercent / 100) * barTotal));
+					let barColor: string;
+					if (contextPercent > 90) barColor = "error";
+					else if (contextPercent > 70) barColor = "warning";
+					else barColor = "success";
+					const bar = theme.fg("dim", "[") +
+						theme.fg(barColor, "█".repeat(barFilled)) +
+						theme.fg("dim", "░".repeat(barTotal - barFilled)) +
+						theme.fg("dim", "]");
+					const ctxStr = contextPercent > 90
+						? theme.fg("error", `${contextPercent}%`)
+						: contextPercent > 70
+							? theme.fg("warning", `${contextPercent}%`)
+							: theme.fg("muted", `${contextPercent}%`);
+					const ctxFull = contextWindow > 0 ? `/${fmt(contextWindow)}` : "";
+
+										// Session title (truncated with … based on remaining space)
+					let sessionTitle = "";
+					try { sessionTitle = pi.getSessionName()?.trim() ?? ""; } catch {}
+					
+					// ── Line 1: content ────────────────────────────────────────────
+					const piPart = theme.fg("accent", icons.pi);
+					const thinkPart = thinkingText
+						? " " + theme.fg("dim", `(${thinkingText})`) + " "
+						: "  ";
+					const ctxBar = `${bar} ${ctxStr}${theme.fg("muted", ctxFull)}`;
+					const prefixStr = ` ${piPart}  ${modelId}${thinkPart}${ctxBar}`;
+					const prefixW = strWidth(prefixStr);
+					const remainW = Math.max(0, width - prefixW - 2); // -2 for "  "
+					let titlePart = "";
+					if (sessionTitle && remainW > 4) {
+						const t = sessionTitle;
+						if (strWidth(t) > remainW - 1) {
+							// Truncate with …
+							const avail = remainW - 1;
+							let cut = "";
+							for (const ch of t) {
+								if (strWidth(cut + ch) > avail) break;
+								cut += ch;
 							}
+							titlePart = "  " + theme.fg("muted", cut + "\u2026");
+						} else {
+							titlePart = "  " + theme.fg("muted", t);
 						}
+					}
+					const content = prefixStr + titlePart;
+					const line1 = truncateToWidth(content, width);
 
-						// Context usage
-						let contextPercent = 0,
-							contextWindow = 0,
-							contextStr = "?";
-						const cu = ctx.getContextUsage();
-						if (cu) {
-							contextPercent = (cu as any).percent ?? 0;
-							contextWindow = (cu as any).contextWindow ?? 0;
-							contextStr = `${contextPercent.toFixed(0)}%`;
-						}
 
-						// Session timer (minutes resolution — updated every 30s)
-						const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-						const h = Math.floor(elapsed / 3600);
-						const m = Math.floor((elapsed % 3600) / 60);
-						const timeStr =
-							h > 0 ? `${h}:${String(m).padStart(2, "0")}h` : `${m}m`;
+					// ── Line 2: ┌─┐ box top ────────────────────────────────────────
+					const border = (s: string) =>
+						editorRef?.borderColor(s) ?? theme.fg("borderMuted", s);
+					const line2 = truncateToWidth(
+						`${border("┌")}${border("─".repeat(width - 2))}${border("┐")}`,
+						width,
+					);
 
-						// Model + thinking
-						const icons = getIcons();
-						const fullModelId = ctx.model?.id ?? "no-model";
-						const modelId = fullModelId
-							.replace(/^.*\//, "")
-							.replace(/-\d{8}$/, "")
-							.replace(/@.*$/, "");
-						const thinkingLevel = pi.getThinkingLevel();
-						const thinkingText = thinkingLevel
-							? getThinkingText(thinkingLevel)
-							: undefined;
-						const modelDisplay = modelId;
-						const modelDisplayW = visibleWidth(modelId);
-
-						// Progress bar
-						const barTotal = 12;
-						const barFilled = Math.min(
-							barTotal,
-							Math.round((contextPercent / 100) * barTotal),
-						);
-						const barEmpty = barTotal - barFilled;
-						let barColor: string;
-						if (contextPercent > 90) barColor = "error";
-						else if (contextPercent > 70) barColor = "warning";
-						else barColor = "success";
-						const progressBar =
-							theme.fg("dim", "[") +
-							theme.fg(barColor, "█".repeat(barFilled)) +
-							theme.fg("dim", "░".repeat(barEmpty)) +
-							theme.fg("dim", "]");
-						const contextLabel =
-							contextPercent > 90
-								? theme.fg("error", contextStr)
-								: contextPercent > 70
-									? theme.fg("warning", contextStr)
-									: theme.fg("muted", contextStr);
-						const contextWindowLabel =
-							contextWindow > 0 ? `/${fmt(contextWindow)}` : "";
-
-						// Segments: each is " content " (1 space each side), separated by border("─")
-						// Layout: ─ π ─ model ─ [thinking] ─ ctx ──fill──── tokens ─ timer ─
-
-						const border = (s: string) =>
-							editorRef?.borderColor(s) ?? theme.fg("borderMuted", s);
-						const sep = border("─");
-						const fill = (n: number) => border("─".repeat(Math.max(1, n)));
-						const usableW = width - 2; // bgBorderLine handles the 2 edge chars
-
-						// ── Segment definitions ─────────────────────────────────────────
-						const starPi = theme.fg("accent", icons.pi);
-						const modelStr = theme.fg("muted", modelDisplay);
-
-						const piSeg = " " + starPi + " ";
-						const piW = 1 + strWidth(icons.pi) + 1;
-						const mdSeg = " " + modelStr + " ";
-						const mdW = 1 + modelDisplayW + 1;
-						const thSeg = thinkingText
-							? " " + theme.fg("dim", thinkingText) + " "
-							: "";
-						const thW = thinkingText ? 1 + visibleWidth(thinkingText) + 1 : 0;
-
-						const ctxFull =
-							progressBar +
-							" " +
-							contextLabel +
-							theme.fg("muted", contextWindowLabel);
-						const ctxFullW =
-							2 +
-							barTotal +
-							1 +
-							visibleWidth(contextStr) +
-							visibleWidth(contextWindowLabel);
-						const ctxCmpct = progressBar + " " + contextLabel;
-						const ctxCmpctW = 2 + barTotal + 1 + visibleWidth(contextStr);
-
-						// Build context segment variants
-						const ctxSeg = " " + ctxFull + " ";
-						const ctxSegW = 1 + ctxFullW + 1;
-						const ctxCSeg = " " + ctxCmpct + " ";
-						const ctxCSegW = 1 + ctxCmpctW + 1;
-
-						// Tokens segment (optional)
-						const tokenParts: string[] = [];
-						const tokenPartsW: number[] = [];
-						if (totalInput || totalOutput) {
-							const t = `↑${fmt(totalInput)} ↓${fmt(totalOutput)}`;
-							tokenParts.push(theme.fg("dim", t));
-							tokenPartsW.push(strWidth(t));
-						}
-						if (totalCacheRead) {
-							const t = `R${fmt(totalCacheRead)}`;
-							tokenParts.push(theme.fg("dim", t));
-							tokenPartsW.push(strWidth(t));
-						}
-						if (totalCost > 0) {
-							const t = `$${totalCost.toFixed(3)}`;
-							tokenParts.push(theme.fg("dim", t));
-							tokenPartsW.push(strWidth(t));
-						}
-						const tokenStr = tokenParts.join(" ");
-						const tokenVisW =
-							tokenPartsW.reduce((a, b) => a + b, 0) +
-							Math.max(0, tokenPartsW.length - 1);
-						const tokSeg = tokenVisW > 0 ? " " + tokenStr + " " : "";
-						const tokW = tokenVisW > 0 ? 1 + tokenVisW + 1 : 0;
-
-						// Timer segment
-						const clockIcon = icons.time ? icons.time + " " : "";
-						const timerPart = theme.fg("muted", clockIcon + timeStr);
-						const timerVisW = strWidth(clockIcon) + strWidth(timeStr);
-						const clkSeg = " " + timerPart + " ";
-						const clkW = 1 + timerVisW + 1;
-
-						// ── Layout: build left + fill + right ────────────────────────────
-						// left  = piSeg + sep + mdSeg [+ sep + thSeg] + sep + ctxVariant
-						// right = [tokSeg + sep] + clkSeg
-						// fill  = usableW - leftW - rightW  (min 1)
-
-						const mkLeft = (useThink: boolean, cs: string, cw: number) => ({
-							text:
-								piSeg +
-								sep +
-								mdSeg +
-								(useThink && thW > 0 ? sep + thSeg : "") +
-								sep +
-								cs,
-							w: piW + 1 + mdW + (useThink && thW > 0 ? 1 + thW : 0) + 1 + cw,
-						});
-						const mkRight = (useTok: boolean) => ({
-							text: useTok && tokW > 0 ? tokSeg + sep + clkSeg : clkSeg,
-							w: useTok && tokW > 0 ? tokW + 1 + clkW : clkW,
-						});
-						const mkLine = (
-							left: { text: string; w: number },
-							right: { text: string; w: number },
-						) => {
-							const f = usableW - left.w - right.w;
-							const line =
-								f >= 1
-									? left.text + fill(f) + right.text
-									: left.text + right.text;
-							// Ensure line is never wider than usableW
-							return truncateToWidth(line, usableW);
-						};
-
-						// Attempt from most to least content
-						const attempts: Array<[boolean, string, number, boolean]> = [
-							[true, ctxSeg, ctxSegW, true],
-							[true, ctxSeg, ctxSegW, false],
-							[false, ctxSeg, ctxSegW, true],
-							[false, ctxSeg, ctxSegW, false],
-							[false, ctxCSeg, ctxCSegW, false],
-						];
-
-						let line = "";
-						for (const [useThink, cs, cw, useTok] of attempts) {
-							const L = mkLeft(useThink, cs, cw);
-							const R = mkRight(useTok);
-							if (L.w + 1 + R.w <= usableW) {
-								line = mkLine(L, R);
-								break;
-							}
-						}
-						if (!line) {
-							// Ultra-narrow: just π + compact ctx
-							const L = { text: piSeg + sep + ctxCSeg, w: piW + 1 + ctxCSegW };
-							line =
-								L.w <= usableW
-									? mkLine(L, { text: "", w: 0 })
-									: truncateToWidth(piSeg + ctxCSeg, usableW);
-						}
-
-						return [bgBorderLine(border, line, width)];
-					},
-				};
-			},
-			{ placement: "aboveEditor" },
-		);
+					return [line1, line2];
+				},
+			};
+		},
+		{ placement: "aboveEditor" },
+	);
 
 		// ── FOOTER: cwd + git ───────────────────────────────────────────────────
 
