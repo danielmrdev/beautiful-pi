@@ -7,8 +7,7 @@
 
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { getIcons, strWidth } from "../shared/icons.ts";
-
-const TRIANGLE = "\u25B8"; // ❯
+const TRIANGLE = "\u276F"; // ❯
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
@@ -104,7 +103,6 @@ export class BorderlessTopEditor extends CustomEditor {
 				`${wrap("└")}${wrap("─".repeat(fill))}${clockPart}${wrap("─")}${wrap("┘")}`,
 			);
 		}
-
 		return contentLines;
 	}
 }

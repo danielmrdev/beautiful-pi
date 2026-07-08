@@ -381,7 +381,6 @@ export default function (pi: ExtensionAPI) {
 						`${border("┌")}${border("─".repeat(width - 2))}${border("┐")}`,
 						width,
 					);
-
 					return [line1, line2];
 				},
 			};

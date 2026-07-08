@@ -174,7 +174,8 @@ export function renderLine(ctx: Ctx, theme: Theme, label: string, intent?: strin
     const prefix = `${indent}${rail} `;
     comp.startTimer(ctx.invalidate);
     const intentLine = intent ? `${prefix}${safeFg(theme, settings.thinkingTextColor, "muted", intent)}` : undefined;
-    comp.set(`${prefix}${theme.fg("dim", currentFrame())}  ${theme.fg("muted", label)}`, intentLine);
+    const connector = intentLine ? theme.fg("dim", "  └─ ") : ``;
+    comp.set(`${prefix}${connector}${theme.fg("dim", currentFrame())} ${theme.fg("muted", label)}`, intentLine);
   } else {
     comp.stopTimer();
     const railColor = ctx.isError ? "error" : "success";
@@ -184,7 +185,8 @@ export function renderLine(ctx: Ctx, theme: Theme, label: string, intent?: strin
       ? theme.fg("error", "✕")
       : theme.fg("success", "✓");
     const intentLine = intent ? `${prefix}${theme.fg("dim", intent)}` : undefined;
-    comp.set(`${prefix}${icon}  ${label}`, intentLine, true);
+    const connector = intentLine ? theme.fg("dim", "  └─ ") : ``;
+    comp.set(`${prefix}${connector}${icon} ${label}`, intentLine, true);
   }
 
   return comp;
