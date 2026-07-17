@@ -756,6 +756,8 @@ const TRUECOLOR =
 const LOGO_SETTLE_FRAME = 90;
 const CHAR_FADE_FRAMES = 22;
 const LOGO_FRAME_MS = 16;
+// Header container spacers (2) + above-editor stats widget (3) + editor (3) + footer (1).
+const BANNER_RESERVED_ROWS = 9;
 
 type AnimationStyle = "vertical-down";
 
@@ -860,6 +862,53 @@ function wrapResourceList(
 	return lines;
 }
 
+// 3 headings, 2 separators, 2 borders.
+const RESOURCE_CARD_OVERHEAD = 7;
+
+function appendResourceEllipsis(line: string, maxWidth: number): string {
+	if (visibleLen(line) + 3 <= maxWidth) return `${line}, …`;
+	return `${truncateToWidth(line, Math.max(1, maxWidth - 1))}…`;
+}
+
+function limitResourceLines(
+	lines: string[],
+	maxLines: number,
+	maxWidth: number,
+): string[] {
+	if (lines.length <= maxLines) return lines;
+	const visibleLines = lines.slice(0, Math.max(1, maxLines));
+	const last = visibleLines.length - 1;
+	visibleLines[last] = appendResourceEllipsis(visibleLines[last] ?? "  ", maxWidth);
+	return visibleLines;
+}
+
+function distributeResourceLines(
+	lists: string[][],
+	maxLines: number,
+): number[] {
+	const budgets = lists.map(() => 1);
+	let remaining = Math.max(0, maxLines - budgets.length);
+
+	// Keep every section visible, then give spare rows to longest lists first.
+	while (remaining > 0) {
+		let best = -1;
+		for (let i = 0; i < lists.length; i++) {
+			if (budgets[i] >= lists[i].length) continue;
+			if (
+				best === -1 ||
+				lists[i].length - budgets[i] >
+					lists[best].length - budgets[best]
+			) {
+				best = i;
+			}
+		}
+		if (best === -1) break;
+		budgets[best]++;
+		remaining--;
+	}
+	return budgets;
+}
+
 function buildBorderedCard(
 	theme: Theme,
 	titleRaw: string,
@@ -936,30 +985,46 @@ function buildResourcesCard(
 	theme: Theme,
 	resources: StartupResources,
 	terminalWidth?: number,
+	maxRows?: number,
 ): string[] {
 	const val = (t: string, c: ThemeColor = "text") => theme.fg(c, t);
 	const section = (t: string) => theme.bold(val(`[${t}]`, "mdHeading"));
+	const resourceWidth = terminalWidth
+		? Math.max(1, Math.min(52, terminalWidth - 4))
+		: 52;
+	const wrappedLists = [
+		wrapResourceList(resources.extensions, resourceWidth, terminalWidth),
+		wrapResourceList(resources.skills, resourceWidth, terminalWidth),
+		wrapResourceList(resources.themes, resourceWidth, terminalWidth),
+	];
+	const listBudgets = distributeResourceLines(
+		wrappedLists,
+		maxRows === undefined
+			? Number.MAX_SAFE_INTEGER
+			: Math.max(wrappedLists.length, maxRows - RESOURCE_CARD_OVERHEAD),
+	);
+	const lists = wrappedLists.map((lines, index) =>
+		limitResourceLines(lines, listBudgets[index] ?? 1, resourceWidth),
+	);
 
 	return buildBorderedCard(
 		theme,
 		" RESOURCES ",
 		[
 			{ kind: "line", text: section("Extensions") },
-			...wrapResourceList(resources.extensions, 52, terminalWidth).map(
-				(text) => ({
-					kind: "line" as const,
-					text: val(text, "syntaxFunction"),
-				}),
-			),
+			...(lists[0] ?? []).map((text) => ({
+				kind: "line" as const,
+				text: val(text, "syntaxFunction"),
+			})),
 			{ kind: "separator" },
 			{ kind: "line", text: section("Skills") },
-			...wrapResourceList(resources.skills, 52, terminalWidth).map((text) => ({
+			...(lists[1] ?? []).map((text) => ({
 				kind: "line" as const,
 				text: val(text, "syntaxString"),
 			})),
 			{ kind: "separator" },
 			{ kind: "line", text: section("Themes") },
-			...wrapResourceList(resources.themes, 52, terminalWidth).map((text) => ({
+			...(lists[2] ?? []).map((text) => ({
 				kind: "line" as const,
 				text: val(text, "text"),
 			})),
@@ -1118,10 +1183,16 @@ function buildHeaderFactory(
 			render(width: number): string[] {
 				const logo = buildAnimatedArt(artLines, theme, g[SYM_FRAME] ?? LOGO_SETTLE_FRAME);
 				const left = buildLeftColumn(logo, buildAgentCard(ctx, theme));
-				const right = buildResourcesCard(theme, resources, width);
+				const termRows = (tui as any).terminal?.rows ?? left.length + 2;
+				const availableRows = Math.max(0, termRows - BANNER_RESERVED_ROWS);
+				const right = buildResourcesCard(
+					theme,
+					resources,
+					width,
+					Math.max(0, availableRows - 2),
+				);
 				const content = renderColumns(left, right, width);
-				const termRows = (tui as any).terminal?.rows ?? content.length;
-				return renderFullscreen(content, width, Math.max(0, termRows - 3));
+				return renderFullscreen(content, width, availableRows);
 			},
 		};
 	};

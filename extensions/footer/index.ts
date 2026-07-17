@@ -22,6 +22,11 @@ import {
 } from "../shared/icons.ts";
 import { BorderlessTopEditor } from "./borderless-top-editor.ts";
 import { loadSettings } from "../shared/settings.ts";
+import {
+	fetchOpenAIUsage,
+	formatOpenAIUsage,
+	type OpenAIUsage,
+} from "./openai-usage.ts";
 
 // ── ANSI helpers ─────────────────────────────────────────────────────────────
 
@@ -391,6 +396,55 @@ export default function (pi: ExtensionAPI) {
 		// ── FOOTER: cwd + git ───────────────────────────────────────────────────
 
 		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
+			let openAIUsage: OpenAIUsage | null = null;
+			let usageLoading = false;
+			let usageLastAttempt = 0;
+			let usageGeneration = 0;
+			let usageWasVisible = false;
+			const USAGE_REFRESH_MS = 120_000;
+
+			async function refreshOpenAIUsage(): Promise<void> {
+				const model = ctx.model;
+				if (!model || model.provider !== "openai-codex" || usageLoading) return;
+				usageLoading = true;
+				const generation = ++usageGeneration;
+				try {
+					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+					const next = auth.ok && auth.apiKey
+						? await fetchOpenAIUsage(auth.apiKey, auth.headers)
+						: null;
+					if (generation === usageGeneration) openAIUsage = next;
+				} catch {
+					if (generation === usageGeneration) openAIUsage = null;
+				} finally {
+					usageLoading = false;
+					tui.requestRender();
+				}
+			}
+
+			function ensureOpenAIUsage(): void {
+				const isOpenAI = ctx.model?.provider === "openai-codex";
+				if (!isOpenAI) {
+					if (usageWasVisible) {
+						usageGeneration++;
+						openAIUsage = null;
+						usageLastAttempt = 0;
+						usageWasVisible = false;
+					}
+					return;
+				}
+				usageWasVisible = true;
+				if (Date.now() - usageLastAttempt < USAGE_REFRESH_MS) return;
+				usageLastAttempt = Date.now();
+				void refreshOpenAIUsage();
+			}
+
+			ensureOpenAIUsage();
+			const usageTimer = setInterval(() => {
+				ensureOpenAIUsage();
+				tui.requestRender();
+			}, 30_000);
+
 			const gitTimer = setInterval(async () => {
 				const changed = await fetchGit();
 				if (changed) tui.requestRender();
@@ -400,6 +454,8 @@ export default function (pi: ExtensionAPI) {
 			return {
 				dispose() {
 					clearInterval(gitTimer);
+					clearInterval(usageTimer);
+					usageGeneration++;
 					unsub();
 				},
 				invalidate() {},
@@ -408,14 +464,25 @@ export default function (pi: ExtensionAPI) {
 					const CWD_MAX = Math.floor(usableW * 0.55);
 
 					const cwd = formatCwd(ctx.cwd, CWD_MAX, theme);
+					const left = !gitState
+						? cwd.text
+						: cwd.text + "  " + formatGit(gitState, theme).text;
+					const icons = getIcons();
+					const usageLabel = openAIUsage
+						? formatOpenAIUsage(openAIUsage)
+						: "";
+					const usage = usageLabel
+						? theme.fg("accent", icons.quota) + " " + theme.fg("muted", usageLabel)
+						: "";
 
-					if (!gitState) {
-						return [bgLine(theme, cwd.text, width)];
+					if (!usage || strWidth(usage) + 2 >= usableW) {
+						return [bgLine(theme, left, width)];
 					}
 
-					const git = formatGit(gitState, theme);
-					const line = cwd.text + "  " + git.text;
-					return [bgLine(theme, line, width)];
+					const leftMax = Math.max(0, usableW - strWidth(usage) - 2);
+					const leftVisible = truncateToWidth(left, leftMax);
+					const gap = Math.max(1, usableW - strWidth(leftVisible) - strWidth(usage));
+					return [bgLine(theme, leftVisible + " ".repeat(gap) + usage, width)];
 				},
 			};
 		});

@@ -86,6 +86,7 @@ export interface IconSet {
   input: string;
   output: string;
   cache: string;
+  quota: string;
   ahead: string;
   behind: string;
   staged: string;
@@ -103,6 +104,7 @@ export const NERD_ICONS: IconSet = {
   input:    "\uF062",   // nf-fa-arrow_up       ↑ (tokens in)
   output:   "\uF063",   // nf-fa-arrow_down     ↓ (tokens out)
   cache:    "\uF1C0",   // nf-fa-database
+  quota:    "\uF201",   // nf-fa-bar_chart — quota / usage
   ahead:    "\u21E1",   // ⇡  (p10k standard)
   behind:   "\u21E3",   // ⇣  (p10k standard)
   staged:   "+",         // +  (p10k standard)
@@ -123,6 +125,7 @@ export const ASCII_ICONS: IconSet = {
   input:  "\u2191",    // ↑
   output: "\u2192",    // ↓ (reuse arrow)
   cache:  "R",
+  quota:  "%",
   ahead:    "\u21E1",  // ⇡
   behind:   "\u21E3",  // ⇣
   staged:   "\u271A",  // ✚
