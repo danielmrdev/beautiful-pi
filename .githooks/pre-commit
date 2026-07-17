@@ -1,0 +1,21 @@
+#!/bin/sh
+# Gitleaks pre-commit hook — blocks commit if secrets detected in staged changes
+set -eu
+
+echo "🔍 Scanning staged changes for secrets..."
+
+gitleaks protect --staged --no-banner -v 2>&1
+exit_code=$?
+
+if [ $exit_code -ne 0 ]; then
+  echo ""
+  echo "❌ Secrets detected in staged changes. Commit blocked."
+  echo "   Remove or revoke them before committing."
+  echo ""
+  echo "   If it's a false positive, add a // gitleaks:allow comment"
+  echo "   or add the fingerprint to .gitleaksignore"
+  exit 1
+fi
+
+echo "✅ No secrets found."
+exit 0
