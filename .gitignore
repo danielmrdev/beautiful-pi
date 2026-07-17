@@ -1,6 +1,5 @@
 node_modules/
 
 # Internal development docs — not for public repo
-AGENTS.md
 docs/superpowers/
 
