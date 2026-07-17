@@ -18,6 +18,9 @@ development workflow and conventions.
 
 ## Development workflow
 
+Pi's package installer uses npm for published packages, but development uses
+pnpm. Run `pnpm test` to execute the test suite.
+
 - **Edit → `/reload`** — no compilation, no restart. The `/reload` command
   re-reads all extensions, themes, and settings immediately.
 - Write TypeScript using pi's runtime types. Import `ExtensionAPI`,
@@ -55,7 +58,7 @@ git config core.hooksPath .githooks
 
 - Prefer minimal diffs and surgical changes.
 - No speculative features or abstractions.
-- Use the AGENTS.md conventions for commit messages and communication style.
+- Use the project conventions for commit messages and communication style.
 
 ## Pull requests
 

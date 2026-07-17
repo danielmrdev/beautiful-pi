@@ -4,17 +4,27 @@ Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono)
 the terminal coding agent.
 
 ```
-                             ▄▄
-█████▄ ▄████▄ ▄████▄ █████▄ ▄██▄▄▄
-▄▄▄▄██ ██  ██ ██▄▄██ ██  ██ ▀██▀▀▀
-██▄▄██ ██▄▄██ ██▄▄▄▄ ██  ██  ██▄▄▄
- ▀▀▀▀▀  ▀▀▀██  ▀▀▀▀▀ ▀▀  ▀▀   ▀▀▀▀
-        ████▀
+           ░██
+           
+░████████  ░██
+░██    ░██ ░██
+░██    ░██ ░██
+░███   ░██ ░██
+░██░█████  ░██
+░██
+░██
 ```
 
 **Features:** animated startup banner, status footer with context usage + git state,
 cohesive rail-styled chat layout, one-line tool output, session auto-naming,
 OpenAI Codex usage monitor, and two Tokyo Night colour themes.
+
+[![npm version](https://img.shields.io/npm/v/beautiful-pi?logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![npm downloads](https://img.shields.io/npm/dm/beautiful-pi?logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![Tests](https://img.shields.io/badge/tests-node--test-2ea44f?logo=github)](https://github.com/danielmrdev/beautiful-pi)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+![beautiful-pi screenshot](./assets/beautiful-pi-screenshot.png)
 
 ---
 
@@ -37,7 +47,7 @@ pi install beautiful-pi
 #### From source
 
 ```bash
-git clone https://github.com/danielmr/beautiful-pi.git
+git clone https://github.com/danielmrdev/beautiful-pi.git
 cd beautiful-pi
 pi install .
 ```
@@ -81,16 +91,16 @@ On session start, beautiful-pi displays a fullscreen banner with:
 The banner auto-hides on first input.
 
 ```
-                         (pi) CODING AGENT          ┌─── RESOURCES ───┐
-           ░██           ┌─────────────────────┐    │ [Extensions]     │
-              │          │ version   0.80.10    │    │   beautiful-pi   │
-░████████  ░██           │ model     claude-..  │    ├─────────────────┤
+                         (pi) CODING AGENT           ┌──── RESOURCES ───┐
+           ░██           ┌──────────────────────┐    │ [Extensions]     │
+                         │ version   0.80.10    │    │   beautiful-pi   │
+░████████  ░██           │ model     claude-..  │    ├──────────────────┤
 ░██    ░██ ░██           │ theme     Tokyo Night│    │ [Skills]         │
-░██    ░██ ░██           └─────────────────────┘    │   omarchy, …     │
-░███   ░██ ░██                                       ├─────────────────┤
+░██    ░██ ░██           └──────────────────────┘    │   omarchy, …     │
+░███   ░██ ░██                                       ├──────────────────┤
 ░██░█████  ░██                                       │ [Themes]         │
-░██                                                 │   tokyo-night    │
-░██                                                 └──────────────────┘
+░██                                                  │   tokyo-night    │
+░██                                                  └──────────────────┘
 ```
 
 **Toggle:** `showBanner` setting (default: `on`).
@@ -193,7 +203,7 @@ Opens a TUI settings panel where you can toggle all features and pick rail
 colours:
 
 ```
-╭───  beautiful-pi settings ───────────────────────────────╮
+╭───  beautiful-pi settings ────────────────────────────────╮
 │                                                           │
 │  > Banner                        on                       │
 │    Footer                        on                       │
@@ -210,7 +220,7 @@ colours:
 │    Custom rail color             borderMuted              │
 │    Dim custom messages           on                       │
 │                                                           │
-╰──  ↑↓ navigate  Space/Enter change  Esc close  ──────────╯
+╰──  ↑↓ navigate  Space/Enter change  Esc close  ───────────╯
 ```
 
 Changes persist to `~/.pi/agent/beautiful-pi.json`. Run `/reload` after
@@ -277,6 +287,18 @@ background.
 
 ---
 
+## Publishing
+
+```bash
+pnpm test          # run tests
+pnpm pack:check    # inspect tarball contents
+pnpm publish --access public  # requires npm account with 2FA
+```
+
+After npm publication, submit the package to the [pi.dev gallery](https://pi.dev/packages) using the npm package name and the public image URL declared in the package manifest. The gallery automatically detects `pi-package` keyword packages.
+
+---
+
 ## Extension architecture
 
 ```
@@ -328,8 +350,8 @@ git config core.hooksPath .githooks
 You can also run it manually:
 
 ```bash
-npm run gitleaks:scan     # full repo scan
-npm run gitleaks:staged   # scan staged changes only
+pnpm gitleaks:scan     # full repo scan
+pnpm gitleaks:staged   # scan staged changes only
 ```
 
 ---
