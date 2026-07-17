@@ -1023,7 +1023,7 @@ export default function (pi: ExtensionAPI): void {
       const fail = results.filter((r) => !r.ok);
 
       const summary = results
-        .map((r) => (r.ok ? `${r.provider} (${r.count})` : `${r.provider} ✗`))
+        .map((r) => (r.ok ? `${r.provider} (${r.count})` : `${r.provider} ✗ ${r.error ?? ""}`))
         .join("\n");
 
       ctx.ui.setStatus("reload-models", summary);
