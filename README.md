@@ -1,6 +1,19 @@
-# beautiful-pi
+# Beautiful Pi
 
 Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
+
+<div align="center">
+
+![beautiful-pi screenshot](./assets/beautiful-pi-screenshot.png)
+
+[![npm version](https://img.shields.io/npm/v/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![npm downloads](https://img.shields.io/npm/dm/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![Tests](https://img.shields.io/badge/tests-node--test-2ea44f?style=flat-square&logo=github)](https://github.com/danielmrdev/beautiful-pi)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
+
+</div>
+
+---
 
 **Features:** 
 - Animated startup banner
@@ -11,19 +24,6 @@ Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono)
 - OpenAI Codex usage monitor
 - Two Tokyo Night colour themes
 - Custom settings TUI
-
-<div align="center">
-
-[![npm version](https://img.shields.io/npm/v/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
-[![npm downloads](https://img.shields.io/npm/dm/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
-[![Tests](https://img.shields.io/badge/tests-node--test-2ea44f?style=flat-square&logo=github)](https://github.com/danielmrdev/beautiful-pi)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
-
-![beautiful-pi screenshot](./assets/beautiful-pi-screenshot.png)
-
-</div>
-
----
 
 ## Installation
 
@@ -93,23 +93,15 @@ The banner auto-hides on first input.
 
 ### Status footer
 
+![status-footer](./assets/status-footer.png)
+
 A two-line widget that replaces the default pi footer:
 
 #### Above the editor — stats bar
 
-```
-π  claude-sonnet  (medium)  [████████░░░░] 45%  ↑12k ↓3k  $0.031  0:42  ✨ Add dark mode
-┌───────────────────────────────────────────────────────────────────────────────┐
-```
-
-Shows model, thinking level, context usage (bar + percentage), token counts,
-cost, session timer, and the session title.
+Shows model, thinking level, context usage (bar + percentage) and the session title.
 
 #### Below the editor — cwd + git state + OpenAI quota
-
-```
-~/projects/my-project  ⎇ main ↑1 ↓2 +3 !2 ?1                75% 0:42h | 30% 2d
-```
 
 - Current directory (with `~` for home, smart truncation)
 - Git branch, ahead/behind, staged/modified/untracked counts
@@ -117,8 +109,6 @@ cost, session timer, and the session title.
   Codex model
 
 **Toggle:** `showFooter` setting (default: `on`).
-
-![status-footer](./assets/status-footer.png)
 
 ---
 
