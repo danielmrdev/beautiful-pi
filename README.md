@@ -1,7 +1,6 @@
 # beautiful-pi
 
-Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono),
-the terminal coding agent.
+Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
 
 ```
            ░██
@@ -19,12 +18,16 @@ the terminal coding agent.
 cohesive rail-styled chat layout, one-line tool output, session auto-naming,
 OpenAI Codex usage monitor, and two Tokyo Night colour themes.
 
-[![npm version](https://img.shields.io/npm/v/beautiful-pi?logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
-[![npm downloads](https://img.shields.io/npm/dm/beautiful-pi?logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
-[![Tests](https://img.shields.io/badge/tests-node--test-2ea44f?logo=github)](https://github.com/danielmrdev/beautiful-pi)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+<div align="center">
+
+[![npm version](https://img.shields.io/npm/v/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![npm downloads](https://img.shields.io/npm/dm/beautiful-pi?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/beautiful-pi)
+[![Tests](https://img.shields.io/badge/tests-node--test-2ea44f?style=flat-square&logo=github)](https://github.com/danielmrdev/beautiful-pi)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 ![beautiful-pi screenshot](./assets/beautiful-pi-screenshot.png)
+
+</div>
 
 ---
 
