@@ -421,36 +421,17 @@ const PROVIDERS: ProviderDef[] = [
   },
 
   // ── OpenAI Codex (ChatGPT subscription via OAuth) ────────────────
-  // Requires chatgpt-account-id header extracted from the OAuth JWT.
+  // STATIC: uses pi's built-in model list (can't fetch from chatgpt.com
+  // due to Cloudflare blocking Node.js fetch). Only OAuth refresh is needed.
   {
     id: "openai-codex",
     label: "OpenAI Codex",
-    baseUrl: "https://chatgpt.com",
-    modelsPath: "/backend-api/models",
+    baseUrl: "https://chatgpt.com/backend-api",
+    modelsPath: "",  // unused — static models only
     api: "openai-codex-responses",
     authType: "bearer",
-    prepareHeaders: (apiKey) => ({
-      "chatgpt-account-id": jwtAccountId(apiKey) ?? "",
-      "OpenAI-Beta": "responses=experimental",
-      originator: "pi",
-      "User-Agent": "pi/1.0",
-    }),
-    parseList: (j) => j.models ?? j.data ?? [],
-    transform: (m) => {
-      const id = m.slug ?? m.id;
-      const name = m.title ?? m.name ?? id;
-      const hasVision = !!(m.capabilities?.vision ?? /vision|image/i.test(m.id ?? ""));
-      const isReasoning = !/gpt-4[^o1]|gpt-3\.5/i.test(id);
-      return {
-        id,
-        name,
-        reasoning: isReasoning,
-        input: hasVision ? ["text", "image"] : ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: m.max_context ?? m.contextWindow ?? 128000,
-        maxTokens: m.capabilities?.max_tokens ?? 128000,
-      };
-    },
+    parseList: () => [],
+    transform: () => ({ id: "", name: "", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 0, maxTokens: 0 }),
   },
 
   // ── Hugging Face ────────────────────────────────────────────────────
@@ -733,6 +714,49 @@ function readModelsJson(): Record<string, ModelsJsonEntry> {
   }
 }
 
+// ── Static models for Cloudflare-blocked providers ────────────────
+
+/**
+ * Load static codex models from pi's built-in model list.
+ * pi-ai ships openai-codex.models.js with all known Codex models.
+ * Falls back to models-store.json if the module isn't available.
+ */
+function loadStaticCodexModels(): Record<string, any> {
+  // Try pi-ai's built-in models first
+  try {
+    // Dynamic import of pi's generated models — resolved at runtime by pi
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const piAiPkg = require.resolve("@earendil-works/pi-ai/dist/providers/openai-codex.models.js", {
+      paths: [join(homedir(), ".pi", "agent", "npm", "node_modules")],
+    });
+    const mod = require(piAiPkg);
+    if (mod.OPENAI_CODEX_MODELS && typeof mod.OPENAI_CODEX_MODELS === "object") {
+      const vals = Object.values(mod.OPENAI_CODEX_MODELS) as any[];
+      if (vals.length > 0) return mod.OPENAI_CODEX_MODELS;
+    }
+  } catch {
+    // fall through
+  }
+
+  // Fallback: models-store.json
+  try {
+    const storePath = join(piConfigDir(), "models-store.json");
+    if (existsSync(storePath)) {
+      const store = JSON.parse(readFileSync(storePath, "utf-8"));
+      const codexModels = store["openai-codex"]?.models;
+      if (Array.isArray(codexModels) && codexModels.length > 0) {
+        const map: Record<string, any> = {};
+        for (const m of codexModels) map[m.id] = m;
+        return map;
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  return {};
+}
+
 // ── HTTP fetch ────────────────────────────────────────────────────────────
 
 async function fetchModels(def: ProviderDef, apiKey: string | undefined): Promise<ModelDef[]> {
@@ -858,15 +882,41 @@ async function reloadModels(
   // ── 3. Fetch models from each provider ──────────────────────────────
   for (const [providerName, cfg] of filtered) {
     if (cfg.def) {
-      // ── Built-in provider ───────────────────────────────────────────
+      // ── Built-in provider (fetchable or static) ─────────────────────
+
+      // OpenAI Codex: Cloudflare blocks Node.js fetch, use static models
+      if (cfg.def.id === "openai-codex" || /^openai-codex-\d+$/.test(providerName)) {
+        const staticModels = loadStaticCodexModels();
+        const models = Object.values(staticModels).filter((m: any) => m && m.id);
+        if (models.length === 0) {
+          results.push({
+            provider: providerName,
+            count: 0,
+            ok: false,
+            error: "no static codex models found",
+          });
+          continue;
+        }
+        // Ensure apiKey is set (OAuth token refreshed above)
+        const apiKey = resolveApiKey(providerName, cfg.key);
+        pi.registerProvider(providerName, {
+          baseUrl: cfg.def.baseUrl,
+          api: cfg.def.api as any,
+          apiKey: apiKey ?? "",
+          models: models as any,
+        });
+        results.push({ provider: providerName, count: models.length, ok: true });
+        continue;
+      }
+
+      // ── Fetchable provider ──────────────────────────────────────────
       const apiKey = resolveApiKey(providerName, cfg.key);
-      // Skip if auth is OAuth-only (no api key to fetch models)
       if (!apiKey) {
         results.push({
           provider: providerName,
           count: 0,
           ok: false,
-          error: "no API key found (OAuth only? use env var or auth.json api_key)",
+          error: "no API key found",
         });
         continue;
       }
@@ -877,7 +927,6 @@ async function reloadModels(
           results.push({ provider: providerName, count: 0, ok: false, error: "empty model list" });
           continue;
         }
-        // Register — pi requires baseUrl + apiKey when models are provided
         pi.registerProvider(providerName, {
           baseUrl: cfg.def.baseUrl,
           api: cfg.def.api as any,
