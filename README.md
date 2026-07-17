@@ -79,6 +79,8 @@ Available themes: `tokyo-night`, `tokyo-night-nord`.
 
 ### Animated startup banner
 
+![banner-animation](./assets/banner-animation.gif)
+
 On session start, beautiful-pi displays a fullscreen banner with:
 
 - **Left column:** Large π ASCII art with per-character fade-in animation, plus
@@ -88,8 +90,6 @@ On session start, beautiful-pi displays a fullscreen banner with:
 The banner auto-hides on first input.
 
 **Toggle:** `showBanner` setting (default: `on`).
-
-![banner-animation](./assets/banner-animation.gif)
 
 ---
 
