@@ -89,6 +89,8 @@ The banner auto-hides on first input.
 
 **Toggle:** `showBanner` setting (default: `on`).
 
+![banner-animation](./assets/banner-animation.gif)
+
 ---
 
 ### Status footer
