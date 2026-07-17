@@ -1,5 +1,7 @@
 node_modules/
 
 # Internal development docs — not for public repo
-docs/superpowers/
+docs/
 
+# Pith ADE 
+.pith

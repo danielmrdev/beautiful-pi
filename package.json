@@ -1,12 +1,37 @@
 {
   "name": "beautiful-pi",
   "version": "0.1.0",
-  "description": "Beautiful UI extensions for pi — footer, banner, themes, Nerd Fonts support",
+  "description": "Beautiful UI extensions and themes for pi — footer, banner, themes, and Nerd Fonts support",
   "keywords": [
-    "pi-package"
+    "pi-package",
+    "pi",
+    "coding-agent",
+    "terminal-ui"
   ],
+  "author": "Daniel Muñoz <github@danielmr.dev>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielmrdev/beautiful-pi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danielmrdev/beautiful-pi/issues"
+  },
+  "homepage": "https://github.com/danielmrdev/beautiful-pi#readme",
+  "files": [
+    "extensions",
+    "themes",
+    "assets",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "CONTRIBUTING.md"
+  ],
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
+    "test": "node --test --import=./test/setup.mjs --import=tsx extensions/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "pack:check": "pnpm pack --dry-run",
     "gitleaks:scan": "gitleaks detect --no-git --verbose -s .",
     "gitleaks:staged": "gitleaks protect --staged --verbose"
   },
@@ -15,12 +40,17 @@
     "@earendil-works/pi-coding-agent": "^0.80.10",
     "@earendil-works/pi-tui": "^0.80.10"
   },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
   "pi": {
     "extensions": [
       "./extensions"
     ],
     "themes": [
       "./themes"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png"
   }
 }
