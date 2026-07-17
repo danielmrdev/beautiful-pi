@@ -6,6 +6,10 @@
     "pi-package"
   ],
   "license": "MIT",
+  "scripts": {
+    "gitleaks:scan": "gitleaks detect --no-git --verbose -s .",
+    "gitleaks:staged": "gitleaks protect --staged --verbose"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
     "@earendil-works/pi-coding-agent": "^0.80.10",
