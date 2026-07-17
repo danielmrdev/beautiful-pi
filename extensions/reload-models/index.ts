@@ -1035,7 +1035,8 @@ export default function (pi: ExtensionAPI): void {
 
       ctx.ui.notify(`Updated: ${ok.map((r) => `${r.provider} (${r.count})`).join(", ")}${oauthMsg}`, "info");
       if (fail.length > 0) {
-        ctx.ui.notify(`Warning: ${fail.map((r) => r.provider).join(", ")} failed`, "warning");
+        const failMsgs = fail.map((r) => `${r.provider}: ${r.error ?? "unknown error"}`);
+        ctx.ui.notify(`Failed: ${failMsgs.join(" · ")}`, "warning");
       }
     },
   });
