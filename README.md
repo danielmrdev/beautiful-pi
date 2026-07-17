@@ -2,21 +2,15 @@
 
 Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
 
-```
-           ░██
-           
-░████████  ░██
-░██    ░██ ░██
-░██    ░██ ░██
-░███   ░██ ░██
-░██░█████  ░██
-░██
-░██
-```
-
-**Features:** animated startup banner, status footer with context usage + git state,
-cohesive rail-styled chat layout, one-line tool output, session auto-naming,
-OpenAI Codex usage monitor, and two Tokyo Night colour themes.
+**Features:** 
+- Animated startup banner
+- Status footer with model, effort, session name, folder, git state and context usage
+- Cohesive rail-styled chat layout
+- One-line tool output
+- Session auto-naming
+- OpenAI Codex usage monitor
+- Two Tokyo Night colour themes
+- Custom settings TUI
 
 <div align="center">
 
@@ -93,19 +87,6 @@ On session start, beautiful-pi displays a fullscreen banner with:
 
 The banner auto-hides on first input.
 
-```
-                         (pi) CODING AGENT           ┌──── RESOURCES ───┐
-           ░██           ┌──────────────────────┐    │ [Extensions]     │
-                         │ version   0.80.10    │    │   beautiful-pi   │
-░████████  ░██           │ model     claude-..  │    ├──────────────────┤
-░██    ░██ ░██           │ theme     Tokyo Night│    │ [Skills]         │
-░██    ░██ ░██           └──────────────────────┘    │   omarchy, …     │
-░███   ░██ ░██                                       ├──────────────────┤
-░██░█████  ░██                                       │ [Themes]         │
-░██                                                  │   tokyo-night    │
-░██                                                  └──────────────────┘
-```
-
 **Toggle:** `showBanner` setting (default: `on`).
 
 ---
@@ -136,6 +117,8 @@ cost, session timer, and the session title.
   Codex model
 
 **Toggle:** `showFooter` setting (default: `on`).
+
+![status-footer](./assets/status-footer.png)
 
 ---
 
