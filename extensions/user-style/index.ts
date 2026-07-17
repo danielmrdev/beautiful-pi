@@ -5,7 +5,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UserMessageComponent } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 
 // ── Theme store ───────────────────────────────────────────────────────────────
@@ -65,7 +65,8 @@ function patchUserMessage(): void {
         rest  = rest.slice(OSC_EF.length);
       }
 
-      return osc + prefix + rest;
+      const available = Math.max(0, Math.floor(width) - visibleWidth(osc) - visibleWidth(prefix));
+      return osc + prefix + truncateToWidth(rest, available, "", true);
     });
   };
 }

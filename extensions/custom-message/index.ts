@@ -87,7 +87,8 @@ class CustomMessageRail {
       }
     }
 
-    return lines;
+    // Final guard: prefixes, wide glyphs and ANSI styles must never overflow TUI width.
+    return lines.map((line) => truncateToWidth(line, Math.max(1, Math.floor(width))));
   }
 }
 

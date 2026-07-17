@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { SettingsList } from "@earendil-works/pi-tui";
+import { SettingsList, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   loadSettings,
   saveSettings,
@@ -108,31 +108,35 @@ export default function settingsExtension(pi: ExtensionAPI): void {
         // ── Bordered wrapper ───────────────────────────────────────────────
         const TITLE = " beautiful-pi settings ";
         const HINT  = " ↑↓ navigate  Space/Enter change  Esc close ";
-        const ANSI_RE = /\x1b\[[0-9;]*m/g;
-        const vlen = (s: string) => Array.from(s.replace(ANSI_RE, "")).length;
-        const pad  = (s: string, w: number) => s + " ".repeat(Math.max(0, w - vlen(s)));
-
         return {
           render(width: number): string[] {
-            const inner = width - 2;
+            const safeWidth = Math.max(1, Math.floor(width));
+            const inner = Math.max(1, safeWidth - 2);
             const bc = (s: string) => theme.fg("border", s);
             const ac = (s: string) => theme.fg("accent", s);
             const dc = (s: string) => theme.fg("dim", s);
+            const fit = (s: string) => truncateToWidth(s, inner, "", true);
+            const fitVisible = (s: string) => visibleWidth(fit(s));
+            const padSafe = (s: string) => s + " ".repeat(Math.max(0, inner - fitVisible(s)));
 
-            const titleLen = vlen(TITLE);
+            // Fit title/hint before drawing borders; repeat() must never receive
+            // negative widths when terminal is narrower than overlay copy.
+            const title = fit(TITLE);
+            const titleLen = visibleWidth(title);
             const side = Math.max(0, Math.floor((inner - titleLen) / 2));
-            const extraR = inner - titleLen - side * 2;
-            const top = bc("╭" + "─".repeat(side)) + ac(TITLE) + bc("─".repeat(side + extraR) + "╮");
+            const extraR = Math.max(0, inner - titleLen - side * 2);
+            const top = bc("╭" + "─".repeat(side)) + ac(title) + bc("─".repeat(side + extraR) + "╮");
 
             const content = settingsList.render(inner);
-            const rows = content.map((line) => bc("│") + pad(line, inner) + bc("│"));
+            const rows = content.map((line) => bc("│") + padSafe(fit(line)) + bc("│"));
 
-            const hintLen = vlen(HINT);
+            const hint = fit(HINT);
+            const hintLen = visibleWidth(hint);
             const hSide = Math.max(0, Math.floor((inner - hintLen) / 2));
-            const hExtra = inner - hintLen - hSide * 2;
-            const bottom = bc("╰" + "─".repeat(hSide)) + dc(HINT) + bc("─".repeat(hSide + hExtra) + "╯");
+            const hExtra = Math.max(0, inner - hintLen - hSide * 2);
+            const bottom = bc("╰" + "─".repeat(hSide)) + dc(hint) + bc("─".repeat(hSide + hExtra) + "╯");
 
-            return [top, ...rows, bottom];
+            return [top, ...rows, bottom].map((line) => truncateToWidth(line, safeWidth, "", true));
           },
           invalidate() { settingsList.invalidate(); },
           handleInput(data: string) {

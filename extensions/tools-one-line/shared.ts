@@ -13,7 +13,7 @@ import {
   createReadToolDefinition,
   createWriteToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { loadSettings, safeFg } from "../shared/settings.ts";
 
 const { resolve } = require("node:path");
@@ -86,7 +86,17 @@ export function getDefs(cwd: string): Record<ToolName, any> {
 // ── ANSI-safe truncation ──────────────────────────────────────────────────────
 
 export function truncate(str: string, maxW: number): string {
-  return truncateToWidth(str, maxW);
+  const width = Math.max(0, Math.floor(maxW));
+  if (width === 0) return "";
+  if (visibleWidth(str) <= width) return str;
+  if (width === 1) return "…";
+
+  // Let pi-tui handle ANSI/APC/wide glyphs, but place ellipsis before its
+  // final reset so suffix keeps current text color instead of terminal default.
+  const clipped = truncateToWidth(str, width - 1, "", false);
+  return clipped.endsWith("\x1b[0m")
+    ? `${clipped.slice(0, -4)}…\x1b[0m`
+    : `${clipped}…`;
 }
 
 // ── One-line component ────────────────────────────────────────────────────────

@@ -7,7 +7,6 @@ import userStyleExtension from "./user-style/index.ts";
 import customMessageExtension from "./custom-message/index.ts";
 import settingsExtension from "./settings/index.ts";
 import sessionTitleExtension from "./session-title/index.ts";
-import reloadModelsExtension from "./reload-models/index.ts";
 
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /beautiful-pi first
@@ -18,5 +17,4 @@ export default function (pi: ExtensionAPI) {
   assistantStyleExtension(pi);
   userStyleExtension(pi);
   customMessageExtension(pi);
-  reloadModelsExtension(pi);
 }

@@ -6,6 +6,7 @@
  */
 
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth } from "@earendil-works/pi-tui";
 import { getIcons, strWidth } from "../shared/icons.ts";
 const TRIANGLE = "\u276F"; // ❯
 
@@ -23,18 +24,9 @@ function ansiWrap(line: string): (t: string) => string {
 }
 
 function trunc(s: string, maxW: number): string {
-	let out = "";
-	let vis = 0;
-	let inEsc = false;
-	for (const ch of s) {
-		if (ch === "\x1b") { inEsc = true; out += ch; continue; }
-		if (inEsc) { out += ch; if (/[a-zA-Z]/.test(ch)) inEsc = false; continue; }
-		const cw = strWidth(ch);
-		if (vis + cw > maxW) break;
-		out += ch;
-		vis += cw;
-	}
-	return out;
+	// pi's editor adds APC cursor markers (\x1b_pi:c\x07). Its truncator
+	// handles those zero-width sequences; a color-only parser counts them as 2 chars.
+	return truncateToWidth(s, Math.max(0, maxW), "", true);
 }
 
 export class BorderlessTopEditor extends CustomEditor {
@@ -103,6 +95,7 @@ export class BorderlessTopEditor extends CustomEditor {
 				`${wrap("└")}${wrap("─".repeat(fill))}${clockPart}${wrap("─")}${wrap("┘")}`,
 			);
 		}
-		return contentLines;
+		// Final guard: custom borders and wide glyphs must never exceed TUI width.
+		return contentLines.map((line) => trunc(line, Math.max(0, Math.floor(width))));
 	}
 }
