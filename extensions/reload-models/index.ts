@@ -431,6 +431,7 @@ const PROVIDERS: ProviderDef[] = [
     authType: "bearer",
     prepareHeaders: (apiKey) => ({
       "chatgpt-account-id": jwtAccountId(apiKey) ?? "",
+      "OpenAI-Beta": "responses=experimental",
       originator: "pi",
       "User-Agent": "pi/1.0",
     }),
