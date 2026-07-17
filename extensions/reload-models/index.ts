@@ -602,6 +602,8 @@ function resolveApiKey(providerId: string, preferredKey?: string): string | unde
 // ── Helpers: JWT decode for Codex OAuth ───────────────────────────────
 
 const JWT_CLAIM_PATH = "https://api.openai.com/auth";
+const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
 
 /** Decode a JWT payload (no signature verification) and return the accountId. */
 function jwtAccountId(jwt: string): string | undefined {
@@ -615,6 +617,99 @@ function jwtAccountId(jwt: string): string | undefined {
   } catch (e) {
     return undefined;
   }
+}
+
+/** Decode JWT payload and return exp timestamp (seconds), or 0 if unreadable. */
+function jwtExpiry(jwt: string): number {
+  try {
+    const parts = jwt.split(".");
+    if (parts.length !== 3) return 0;
+    const decoded = JSON.parse(atob(parts[1]!));
+    return (decoded.exp as number) ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** True if the JWT's exp is in the past (with 5 min grace period). */
+function isJwtExpired(jwt: string): boolean {
+  const exp = jwtExpiry(jwt);
+  if (exp === 0) return true; // can't decode → treat as expired
+  // 5 min grace to avoid races with near-expiry tokens
+  return Date.now() / 1000 >= exp - 300;
+}
+
+/**
+ * Refresh OAuth tokens for openai-codex providers in auth.json.
+ * Scans all entries matching "openai-codex" or "openai-codex-N",
+ * checks expiry, and refreshes via the OAuth refresh_token grant.
+ * Writes updated auth.json in-place.
+ */
+async function refreshCodexOAuthTokens(): Promise<{ refreshed: string[]; failed: string[] }> {
+  const authPath = join(piConfigDir(), "auth.json");
+  if (!existsSync(authPath)) return { refreshed: [], failed: [] };
+
+  const raw: Record<string, any> = JSON.parse(readFileSync(authPath, "utf-8"));
+  const refreshed: string[] = [];
+  const failed: string[] = [];
+
+  for (const [providerId, cred] of Object.entries(raw)) {
+    // Match "openai-codex" or "openai-codex-2", "openai-codex-3", etc.
+    if (!/^openai-codex(-\d+)?$/.test(providerId)) continue;
+    if (!cred || typeof cred !== "object" || cred.type !== "oauth") continue;
+    if (typeof cred.access !== "string" || typeof cred.refresh !== "string") continue;
+
+    // Skip if still fresh
+    if (!isJwtExpired(cred.access)) continue;
+
+    // Attempt refresh
+    try {
+      const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: cred.refresh,
+        client_id: CODEX_CLIENT_ID,
+      });
+
+      const res = await fetch(CODEX_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+      }
+
+      const json: any = await res.json();
+      if (!json.access_token || !json.refresh_token || typeof json.expires_in !== "number") {
+        throw new Error("response missing access_token/refresh_token/expires_in");
+      }
+
+      // Extract accountId from new token
+      const accountId = jwtAccountId(json.access_token) ?? cred.accountId;
+
+      raw[providerId] = {
+        type: "oauth",
+        access: json.access_token,
+        refresh: json.refresh_token,
+        expires: Date.now() + json.expires_in * 1000,
+        accountId,
+      };
+      refreshed.push(providerId);
+    } catch (err) {
+      failed.push(providerId);
+    }
+  }
+
+  if (refreshed.length > 0 || failed.length > 0) {
+    // Write atomically: stringify once
+    const { writeFileSync } = require("node:fs") as typeof import("node:fs");
+    writeFileSync(authPath, JSON.stringify(raw, null, 2), "utf-8");
+  }
+
+  return { refreshed, failed };
 }
 
 // ── Custom provider detection (models.json) ──────────────────────────
@@ -684,10 +779,15 @@ interface ReloadResult {
   error?: string;
 }
 
+interface OAuthRefreshInfo {
+  refreshed: string[];
+  failed: string[];
+}
+
 async function reloadModels(
   pi: ExtensionAPI,
   providerFilter?: string[],
-): Promise<ReloadResult[]> {
+): Promise<{ results: ReloadResult[]; oauth: OAuthRefreshInfo }> {
   const results: ReloadResult[] = [];
 
   // ── 1. Detect configured providers ──────────────────────────────────
@@ -729,13 +829,29 @@ async function reloadModels(
     }
   }
 
+  // ── 2b. Refresh expired OAuth tokens for openai-codex providers ──
+  // Do this before filtering so refreshed tokens propagate into toRefresh
+  const { refreshed, failed: refreshFailed } = await refreshCodexOAuthTokens();
+  if (refreshed.length > 0) {
+    const freshAuth = readAuthJson();
+    for (const pid of refreshed) {
+      if (freshAuth[pid]) {
+        configured.set(pid, freshAuth[pid]);
+        const existing = toRefresh.get(pid);
+        if (existing) {
+          toRefresh.set(pid, { ...existing, key: freshAuth[pid] });
+        }
+      }
+    }
+  }
+
   // Filter if specific providers requested
   const filtered = providerFilter && providerFilter.length > 0
     ? new Map([...toRefresh].filter(([name]) => providerFilter.includes(name)))
     : toRefresh;
 
   if (filtered.size === 0) {
-    return results;
+    return { results, oauth: { refreshed, failed: refreshFailed } };
   }
 
   // ── 3. Fetch models from each provider ──────────────────────────────
@@ -822,7 +938,7 @@ async function reloadModels(
     }
   }
 
-  return results;
+  return { results, oauth: { refreshed, failed: refreshFailed } };
 }
 
 // ── Extension entry ───────────────────────────────────────────────────────
@@ -834,10 +950,12 @@ export default function (pi: ExtensionAPI): void {
     if (autoRefreshed) return;
     autoRefreshed = true;
     try {
-      const results = await reloadModels(pi);
+      const { results, oauth } = await reloadModels(pi);
       const ok = results.filter((r) => r.ok);
       if (ok.length > 0) {
-        ctx.ui.notify(`Models: ${ok.map((r) => `${r.provider} (${r.count})`).join(", ")}`, "info");
+        const parts = [ok.map((r) => `${r.provider} (${r.count})`).join(", ")];
+        if (oauth.refreshed.length > 0) parts.push(`OAuth: ${oauth.refreshed.join(", ")}`);
+        ctx.ui.notify(`Models: ${parts.join(" · ")}`, "info");
       }
     } catch (e) {
       // ignore
@@ -888,7 +1006,7 @@ export default function (pi: ExtensionAPI): void {
       ctx.ui.setStatus("reload-models", "Fetching model lists...");
       ctx.ui.notify("Fetching models from configured providers...", "info");
 
-      const results = await reloadModels(pi, filter);
+      const { results, oauth } = await reloadModels(pi, filter);
 
       if (results.length === 0) {
         ctx.ui.notify(
@@ -910,7 +1028,12 @@ export default function (pi: ExtensionAPI): void {
 
       ctx.ui.setStatus("reload-models", summary);
 
-      ctx.ui.notify(`Updated: ${ok.map((r) => `${r.provider} (${r.count})`).join(", ")}`, "info");
+      const oauthParts: string[] = [];
+      if (oauth.refreshed.length > 0) oauthParts.push(`refreshed: ${oauth.refreshed.join(", ")}`);
+      if (oauth.failed.length > 0) oauthParts.push(`FAILED: ${oauth.failed.join(", ")}`);
+      const oauthMsg = oauthParts.length > 0 ? ` [OAuth ${oauthParts.join(" · ")}]` : "";
+
+      ctx.ui.notify(`Updated: ${ok.map((r) => `${r.provider} (${r.count})`).join(", ")}${oauthMsg}`, "info");
       if (fail.length > 0) {
         ctx.ui.notify(`Warning: ${fail.map((r) => r.provider).join(", ")} failed`, "warning");
       }
