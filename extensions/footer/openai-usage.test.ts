@@ -25,6 +25,21 @@ describe("OpenAI Codex usage", () => {
 		assert.deepEqual(formatOpenAIUsage(usage!), "3% 3:44h | 10% 2d2h");
 	});
 
+	test("finds seven-day usage even when it is primary window", () => {
+		const usage = parseOpenAIUsage({
+			rate_limit: {
+				primary_window: {
+					used_percent: 25,
+					limit_window_seconds: 604800,
+					reset_after_seconds: 597314,
+				},
+				secondary_window: null,
+			},
+		});
+
+		assert.equal(formatOpenAIUsage(usage!), "25% 6d21h");
+	});
+
 	test("ignores windows with unknown durations", () => {
 		assert.equal(parseOpenAIUsage({
 			rate_limit: {

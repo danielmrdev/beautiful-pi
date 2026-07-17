@@ -56,8 +56,13 @@ export function parseOpenAIUsage(body: unknown): OpenAIUsage | null {
 	const rateLimit = (body as Record<string, unknown>).rate_limit;
 	if (!rateLimit || typeof rateLimit !== "object") return null;
 	const windows = rateLimit as Record<string, unknown>;
-	const fiveHour = parseWindow(windows.primary_window, FIVE_HOURS);
-	const sevenDay = parseWindow(windows.secondary_window, SEVEN_DAYS);
+	const candidates = [windows.primary_window, windows.secondary_window];
+	const fiveHour = candidates
+		.map((window) => parseWindow(window, FIVE_HOURS))
+		.find((window): window is UsageWindow => window !== undefined);
+	const sevenDay = candidates
+		.map((window) => parseWindow(window, SEVEN_DAYS))
+		.find((window): window is UsageWindow => window !== undefined);
 	if (!fiveHour && !sevenDay) return null;
 	return {
 		...(fiveHour ? { fiveHour } : {}),
