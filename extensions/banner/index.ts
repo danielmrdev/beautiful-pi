@@ -1251,10 +1251,11 @@ export default function (pi: ExtensionAPI) {
 		if (loadSettings().showBanner) showBanner(ctx, pi);
 	});
 
-	pi.on("input", async () => {
-		if (bannerCtx?.hasUI) {
-			bannerCtx.ui.setHeader(undefined);
+	pi.on("input", async (_event, ctx) => {
+		if (ctx.hasUI) {
+			ctx.ui.setHeader(undefined);
 		}
+		bannerCtx = ctx;
 		bannerVisible = false;
 		stopAnim();
 	});
