@@ -22,6 +22,7 @@ Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono)
 - One-line tool output
 - Session auto-naming
 - OpenAI Codex usage monitor
+- OpenCode Go usage monitor
 - Two Tokyo Night colour themes
 - Custom settings TUI
 
@@ -103,12 +104,15 @@ A two-line widget that replaces the default pi footer:
 
 Shows model, thinking level, context usage (bar + percentage) and the session title.
 
-#### Below the editor — cwd + git state + OpenAI quota
+#### Below the editor — cwd + git state + quota
 
 - Current directory (with `~` for home, smart truncation)
 - Git branch, ahead/behind, staged/modified/untracked counts
 - OpenAI Codex rate-limit usage (5h + 7d windows) — shown when using an OpenAI
   Codex model
+- OpenCode Go subscription usage (5h, 7d, 30d tiers) — shown when using an
+  OpenCode Go model. Requires `opencodeGoWorkspaceId` + `opencodeGoAuthCookie`
+  in `beautiful-pi.json`
 
 **Toggle:** `showFooter` setting (default: `on`).
 
@@ -293,6 +297,7 @@ extensions/
 │   ├── index.ts                # Stats bar + footer widgets
 │   ├── borderless-top-editor.ts# Custom editor with ❯ prefix + timer
 │   └── openai-usage.ts         # OpenAI Codex quota fetcher/parser
+│   └── opencode-go-usage.ts    # OpenCode Go quota fetcher/parser
 ├── assistant-style/
 │   └── index.ts                # Agent message rail style
 ├── user-style/

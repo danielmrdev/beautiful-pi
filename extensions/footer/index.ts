@@ -27,6 +27,11 @@ import {
 	formatOpenAIUsage,
 	type OpenAIUsage,
 } from "./openai-usage.ts";
+import {
+	fetchOpenCodeGoUsage,
+	formatOpenCodeGoUsage,
+	type OpenCodeGoUsage,
+} from "./opencode-go-usage.ts";
 
 // ── ANSI helpers ─────────────────────────────────────────────────────────────
 
@@ -401,6 +406,11 @@ export default function (pi: ExtensionAPI) {
 			let usageLastAttempt = 0;
 			let usageGeneration = 0;
 			let usageWasVisible = false;
+			let openCodeGoUsage: OpenCodeGoUsage | null = null;
+			let ocgLoading = false;
+			let ocgLastAttempt = 0;
+			let ocgGeneration = 0;
+			let ocgWasVisible = false;
 			const USAGE_REFRESH_MS = 120_000;
 
 			async function refreshOpenAIUsage(): Promise<void> {
@@ -439,9 +449,51 @@ export default function (pi: ExtensionAPI) {
 				void refreshOpenAIUsage();
 			}
 
+			async function refreshOpenCodeGoUsage(): Promise<void> {
+				const model = ctx.model;
+				if (!model || model.provider !== "opencode-go" || ocgLoading) return;
+				ocgLoading = true;
+				const generation = ++ocgGeneration;
+				try {
+					const settings = loadSettings();
+					const wsId = settings.opencodeGoWorkspaceId;
+					const cookie = settings.opencodeGoAuthCookie;
+					if (!wsId || !cookie) {
+						if (generation === ocgGeneration) openCodeGoUsage = null;
+						return;
+					}
+					const next = await fetchOpenCodeGoUsage(wsId, cookie);
+					if (generation === ocgGeneration) openCodeGoUsage = next;
+				} catch {
+					if (generation === ocgGeneration) openCodeGoUsage = null;
+				} finally {
+					ocgLoading = false;
+					tui.requestRender();
+				}
+			}
+
+			function ensureOpenCodeGoUsage(): void {
+				const isOCG = ctx.model?.provider === "opencode-go";
+				if (!isOCG) {
+					if (ocgWasVisible) {
+						ocgGeneration++;
+						openCodeGoUsage = null;
+						ocgLastAttempt = 0;
+						ocgWasVisible = false;
+					}
+					return;
+				}
+				ocgWasVisible = true;
+				if (Date.now() - ocgLastAttempt < USAGE_REFRESH_MS) return;
+				ocgLastAttempt = Date.now();
+				void refreshOpenCodeGoUsage();
+			}
+
 			ensureOpenAIUsage();
+			ensureOpenCodeGoUsage();
 			const usageTimer = setInterval(() => {
 				ensureOpenAIUsage();
+				ensureOpenCodeGoUsage();
 				tui.requestRender();
 			}, 30_000);
 
@@ -456,6 +508,7 @@ export default function (pi: ExtensionAPI) {
 					clearInterval(gitTimer);
 					clearInterval(usageTimer);
 					usageGeneration++;
+					ocgGeneration++;
 					unsub();
 				},
 				invalidate() {},
@@ -468,9 +521,12 @@ export default function (pi: ExtensionAPI) {
 						? cwd.text
 						: cwd.text + "  " + formatGit(gitState, theme).text;
 					const icons = getIcons();
-					const usageLabel = openAIUsage
-						? formatOpenAIUsage(openAIUsage)
-						: "";
+					let usageLabel = "";
+					if (openAIUsage) {
+						usageLabel = formatOpenAIUsage(openAIUsage);
+					} else if (openCodeGoUsage) {
+						usageLabel = formatOpenCodeGoUsage(openCodeGoUsage);
+					}
 					const usage = usageLabel
 						? theme.fg("accent", icons.quota) + " " + theme.fg("muted", usageLabel)
 						: "";

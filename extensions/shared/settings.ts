@@ -33,6 +33,8 @@ export interface BeautifulPiSettings {
   showBanner: boolean;
   showFooter: boolean;
   sessionTitle: boolean;
+  opencodeGoWorkspaceId?: string;
+  opencodeGoAuthCookie?: string;
 }
 
 const DEFAULTS: BeautifulPiSettings = (() => {
@@ -100,6 +102,13 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
     if ((settings as any)[key] !== DEFAULTS[key]) {
       (toSave as any)[key] = (settings as any)[key];
     }
+  }
+  // Persist optional credential keys (not in DEFAULTS)
+  if (settings.opencodeGoWorkspaceId) {
+    toSave.opencodeGoWorkspaceId = settings.opencodeGoWorkspaceId;
+  }
+  if (settings.opencodeGoAuthCookie) {
+    toSave.opencodeGoAuthCookie = settings.opencodeGoAuthCookie;
   }
 
   // When everything matches defaults, delete the stale file (if any) instead
