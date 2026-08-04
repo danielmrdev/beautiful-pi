@@ -1245,12 +1245,6 @@ export default function (pi: ExtensionAPI) {
 		if (loadSettings().showBanner) showBanner(ctx, pi);
 	});
 
-	pi.on("session_switch", async (_event, ctx: ExtensionContext) => {
-		bannerCtx = ctx;
-		bannerVisible = true;
-		if (loadSettings().showBanner) showBanner(ctx, pi);
-	});
-
 	pi.on("input", async (_event, ctx) => {
 		if (ctx.hasUI) {
 			ctx.ui.setHeader(undefined);

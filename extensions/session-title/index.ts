@@ -11,7 +11,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { completeSimple } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import { loadSettings } from "../shared/settings.ts";
 
 // ── Fallback: simple truncation ───────────────────────────────────────────────
