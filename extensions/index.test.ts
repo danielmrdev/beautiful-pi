@@ -14,7 +14,8 @@ describe("extension wiring", () => {
     assert.ok(sessionStart.length >= 1, "session_start handler(s) registered");
     assert.ok(input.length >= 1, "input handler(s) registered");
 
-    // Settings registers /beautiful-pi command
-    assert.ok(pi.commands.has("beautiful-pi"), "/beautiful-pi command registered");
+    // Settings registers /bpi + legacy /beautiful-pi
+    assert.ok(pi.commands.has("bpi"), "/bpi command registered");
+    assert.ok(pi.commands.has("beautiful-pi"), "/beautiful-pi alias registered");
   });
 });

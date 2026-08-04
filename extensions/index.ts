@@ -9,7 +9,7 @@ import settingsExtension from "./settings/index.ts";
 import sessionTitleExtension from "./session-title/index.ts";
 
 export default function (pi: ExtensionAPI) {
-  settingsExtension(pi);         // register /beautiful-pi first
+  settingsExtension(pi);         // register /bpi (+ /beautiful-pi alias)
   sessionTitleExtension(pi);
   bannerExtension(pi);
   footerExtension(pi);
