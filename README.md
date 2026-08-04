@@ -74,6 +74,25 @@ Or from the settings file (`~/.pi/agent/settings.json`):
 
 Available themes: `tokyo-night`, `tokyo-night-nord`.
 
+### Included integrations
+
+One install also enables this curated package catalog. Upstream packages remain
+normal npm dependencies, pinned exactly in `package.json`:
+
+| Category | Integration | Upstream docs |
+| --- | --- | --- |
+| Compaction | [Codex native compaction](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
+| Context | [Hypa](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa), [RTK Optimizer](https://github.com/MasuRii/pi-rtk-optimizer) | [Hypa README](https://github.com/Hypabolic/Hypa#readme), [RTK README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
+| Workflows | [Plannotator](https://github.com/backnotprop/plannotator), [Subagents](https://github.com/tintinweb/pi-subagents) | [Plannotator docs](https://github.com/backnotprop/plannotator), [Subagents README](https://github.com/tintinweb/pi-subagents#readme) |
+| Interaction | [Ask User Question](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question), [`/btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | [Ask User README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme), [Btw README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
+| Memory | [Pi Blackhole](https://github.com/k0valik/pi-blackhole) | [README](https://github.com/k0valik/pi-blackhole#readme) |
+| Themes | Tokyo Night, Tokyo Night Nord | [Theme docs](#themes) |
+
+The package manifest lists each selected extension, prompt, and theme explicitly.
+No wildcard discovery is used. Curated themes, Piolium, and Agent Browser stay
+independent packages and are not included. See
+[`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership and licenses.
+
 ---
 
 ## Features
