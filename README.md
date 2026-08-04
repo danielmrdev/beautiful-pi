@@ -76,8 +76,9 @@ Available themes: `tokyo-night`, `tokyo-night-nord`.
 
 ### Included integrations
 
-One install also enables this curated package catalog. Upstream packages remain
-normal npm dependencies, pinned exactly in `package.json`:
+One `pi install beautiful-pi` enables this curated package catalog automatically;
+no second package install is needed. Upstream packages remain normal npm
+dependencies, pinned exactly in `package.json`:
 
 | Category | Integration | Upstream docs |
 | --- | --- | --- |
@@ -88,10 +89,71 @@ normal npm dependencies, pinned exactly in `package.json`:
 | Memory | [Pi Blackhole](https://github.com/k0valik/pi-blackhole) | [README](https://github.com/k0valik/pi-blackhole#readme) |
 | Themes | Tokyo Night, Tokyo Night Nord | [Theme docs](#themes) |
 
-The package manifest lists each selected extension, prompt, and theme explicitly.
-No wildcard discovery is used. Curated themes, Piolium, and Agent Browser stay
-independent packages and are not included. See
+The package manifest lists each selected extension, prompt, and theme explicitly;
+`skills: []` records that this catalog currently includes no skills. Its `../`
+entries target normal dependencies hoisted beside the package by Pi's managed npm
+install; bundled `node_modules/` paths are intentionally not used. No wildcard
+discovery is used. Curated themes, Piolium, and Agent Browser stay independent
+packages and are not included. See
 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership and licenses.
+
+### Provider and compaction commands
+
+beautiful-pi uses Pi's built-in provider auth; it does not add a second Codex
+account store or rotate credentials. In an interactive session:
+
+```text
+/login openai-codex       configure or refresh Codex OAuth
+/logout                   remove credentials saved by /login
+```
+
+For scripts or external clients, print the configured OAuth bearer token without
+starting a session:
+
+```bash
+pi auth print-bearer-token --provider openai-codex --model gpt-5.5
+```
+
+`pi auth` reads stored credentials and never accepts them as command-line input.
+Use `pi auth --help` for the exact command surface; there are no
+`/codex-account-*` or account-pool commands in this release.
+
+Codex native remote compaction is enabled only for `openai-codex` models. It
+uses the Codex Responses API, keeps its opaque checkpoint in Pi's native
+compaction entry, and fails closed if the remote request fails. Configure it
+separately from beautiful-pi settings:
+
+```json
+{
+  "autoCompact": true,
+  "thresholdRatio": 0.9
+}
+```
+
+Save this at `~/.pi/agent/pi-codex-compaction.json`; project-local
+`.pi/pi-codex-compaction.json` takes precedence. `compaction.reserveTokens` in
+Pi's `settings.json` still controls Pi's own threshold. Other providers use
+Pi's normal lifecycle.
+
+`pi-blackhole@0.4.3` is a temporary bundled upstream integration while
+provider-specific compaction coordination is resolved. Do not enable Blackhole
+auto-compaction for Codex sessions alongside native Codex compaction. For a
+Codex session, set Blackhole's `compaction` to `"off"` in
+`~/.pi/agent/pi-blackhole/pi-blackhole-config.json`; use Blackhole auto
+compaction on non-Codex sessions. The `/blackhole-memory` and
+`/blackhole-recall` commands remain available when Blackhole is loaded.
+
+### Configuration entry points
+
+| Path or command | Purpose |
+| --- | --- |
+| `~/.pi/agent/settings.json` | Pi settings and active theme |
+| `~/.pi/agent/beautiful-pi.json` | beautiful-pi feature and rail overrides |
+| `~/.pi/agent/pi-codex-compaction.json` | Codex native compaction |
+| `.pi/pi-codex-compaction.json` | Project override for Codex compaction |
+| `~/.pi/agent/pi-blackhole/pi-blackhole-config.json` | Blackhole compaction and memory |
+| `/beautiful-pi` or `/bpi` | Open beautiful-pi settings TUI |
+| `/reload` | Reload package resources after config changes |
 
 ---
 
@@ -290,9 +352,23 @@ background.
 
 ## Publishing
 
+Run release checks before publishing:
+
 ```bash
-pnpm test          # run tests
+pnpm typecheck     # TypeScript checks
+pnpm test          # complete automated suite
 pnpm pack:check    # inspect tarball contents
+```
+
+The tarball must contain runtime extensions, themes, assets, README, license,
+`CHANGELOG.md`, and `THIRD-PARTY-NOTICES.md`; it must not depend on a bundled
+`node_modules/` directory. A clean install should resolve the exact dependency
+versions from `package.json`, then load every explicit manifest resource in a
+TUI-capable Pi process with `PI_OFFLINE=1`. This smoke test needs no OAuth,
+Codex, quota, or network credentials; provider requests are not part of release
+verification.
+
+```bash
 pnpm publish --access public  # requires npm account with 2FA
 ```
 
