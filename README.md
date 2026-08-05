@@ -481,11 +481,16 @@ The tarball must contain runtime extensions, themes, assets, README, license,
 `node_modules/` directory. Run `pnpm smoke` to verify a clean install: it packs
 the tarball, installs it into a fresh temporary agent directory (resolving every
 exact dependency, including the pi-blackhole fork pin), asserts every manifest
-path resolves, and boots the real pi CLI in print mode — reaching the auth stage
-("No API key found") is the success signal. The smoke test needs network access
-to the npm registry and the pi-blackhole fork on GitHub, but requires no OAuth,
-Codex, or quota credentials; provider requests are not part of release
-verification.
+path resolves, and boots the real pi CLI twice — once in print mode (reaching
+the auth stage "No API key found" is the success signal) and once in
+TUI-capable mode under a PTY, where the banner must render with no extension
+load errors. The smoke test also exercises the provider-aware compaction skip
+hook at runtime: the coordinator must write
+`skipForProviders` into the clean agent dir, and the pi-blackhole fork must
+step aside for Codex sessions while still compacting non-Codex sessions. The
+smoke test needs network access to the npm registry and the pi-blackhole fork
+on GitHub, but requires no OAuth, Codex, or quota credentials; provider
+requests are not part of release verification.
 
 ```bash
 pnpm publish --access public  # requires npm account with 2FA

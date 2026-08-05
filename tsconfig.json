@@ -1,5 +1,5 @@
 {
-  "include": ["extensions/**/*.ts", "test/**/*.ts"],
+  "include": ["extensions/**/*.ts", "scripts/**/*.mts", "test/**/*.ts"],
   "compilerOptions": {
     "noEmit": true,
     "strict": true,

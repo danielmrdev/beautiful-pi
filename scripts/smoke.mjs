@@ -3,8 +3,11 @@
  *
  * Proves that a CLEAN temporary Pi installation resolves every exact
  * dependency and every explicit manifest path, and that pi boots all selected
- * extensions without registration errors, tool collisions, or command
- * collisions — without any live OAuth/Codex/quota credentials.
+ * extensions without extension load/registration errors — without any live
+ * OAuth/Codex/quota credentials. (pi 0.83 resolves duplicate tools
+ * first-registration-wins and duplicate commands by `name:1` renaming, so
+ * collisions are silent by design; the detectable failure class is a
+ * throwing extension.)
  *
  * Flow:
  *   1. `pnpm pack` → tarball of the current tree.
@@ -19,11 +22,20 @@
  *   4. Boot the real pi CLI in print mode against the temp agent (no
  *      credentials): the extension-load phase must pass cleanly — pi reaching
  *      the auth stage ("No API key found") is the success signal.
+ *   5. Boot the real pi CLI in TUI-capable mode under a PTY: the
+ *      beautiful-pi banner must render (session_start ran with UI enabled)
+ *      with no extension load errors, and the compaction coordinator's
+ *      session_start hook must write skipForProviders into the clean agent
+ *      dir at runtime.
+ *   6. Exercise the pi-blackhole fork's provider-aware skip guard at runtime
+ *      against the installed artifacts (openai-codex session → blackhole
+ *      steps aside; non-Codex session → blackhole compacts).
  *
- * Requires network (npm registry + the pi-blackhole fork on GitHub). Run with
- * `pnpm smoke`. Not part of the offline unit suite.
+ * Requires network (npm registry + the pi-blackhole fork on GitHub), a PTY
+ * runner (`script` from util-linux), and tsx. Run with `pnpm smoke`. Not part
+ * of the offline unit suite.
  */
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,6 +43,8 @@ import { join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 const PI_BIN = join(ROOT, "node_modules", ".bin", "pi");
 const TARBALL = join(ROOT, "beautiful-pi-0.1.0.tgz");
+// The real load-phase signal is "Failed to load extension"; the "conflicts
+// with" branches are a safety net in case a future pi/provider prints one.
 const LOAD_ERROR_RE =
   /Failed to load extension|Tool\s+["'`]?[A-Za-z0-9_-]+["'`]?\s+conflicts with|Command\s+["'`]?[A-Za-z0-9_/-]+["'`]?\s+conflicts/i;
 
@@ -49,6 +63,68 @@ function run(cmd, args, opts = {}) {
     return { timedOut: true, stdout: res.stdout ?? "", stderr: res.stderr ?? "", status: null };
   }
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "", error: res.error };
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+// TUI-mode render signals: pi emits terminal-mode escapes on start, and the
+// beautiful-pi banner proves session_start ran with ctx.hasUI enabled.
+const TUI_ESCAPE_RE = /\x1b\[/;
+const TUI_BANNER_RE = /CODING AGENT/;
+
+/**
+ * Boots the real pi CLI in TUI mode under a PTY and waits for the
+ * beautiful-pi banner to render, then kills the process group.
+ * Returns { ok, output, timedOut?, exitCode?, signal? }.
+ */
+async function bootTuiPi(piBin, args, { env, cwd, timeoutMs = 60_000 }) {
+  const cmd = [piBin, ...args].map(shellQuote).join(" ");
+  return new Promise((resolve) => {
+    let output = "";
+    let finished = false;
+    let child;
+    function finish(result) {
+      if (finished) return;
+      finished = true;
+      clearInterval(poll);
+      clearTimeout(deadline);
+      // Give the process group a short grace so synchronous session_start
+      // side effects (e.g. the coordinator's config write) flush before the
+      // kill lands.
+      setTimeout(() => {
+        if (child?.pid) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch {
+            /* process group already gone */
+          }
+        }
+      }, 600);
+      resolve({ ...result, output });
+    }
+    const poll = setInterval(() => {
+      if (TUI_ESCAPE_RE.test(output) && TUI_BANNER_RE.test(output)) {
+        finish({ ok: true });
+      }
+    }, 200);
+    const deadline = setTimeout(() => finish({ ok: false, timedOut: true }), timeoutMs);
+    child = spawn("script", ["-qec", cmd, "/dev/null"], {
+      detached: true,
+      env,
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.on("data", (d) => {
+      output += d.toString("utf8");
+    });
+    child.stderr.on("data", (d) => {
+      output += d.toString("utf8");
+    });
+    child.on("error", (err) => finish({ ok: false, error: err.message }));
+    child.on("exit", (code, signal) => finish({ ok: false, exitCode: code, signal }));
+  });
 }
 
 const tmp = mkdtempSync(join(tmpdir(), "bpi-smoke-"));
@@ -129,7 +205,7 @@ try {
   } else if (boot.timedOut) {
     fail("pi boot timed out before reaching the provider stage");
   } else {
-    ok("extensions loaded without registration/tool/command collisions");
+    ok("extensions loaded without load/registration errors");
   }
   if (!/No API key found|authentication|api key|401/i.test(output)) {
     // Pi must reach the auth stage — anything else means the run never got
@@ -137,6 +213,65 @@ try {
     fail(`pi did not reach the provider stage:\n${output.slice(0, 500)}`);
   } else {
     ok("pi reached the provider stage (load phase passed)");
+  }
+
+  // 5. Boot pi in TUI-capable mode under a PTY — the UI registration paths
+  //     (banner, footer, editor, rails, commands) that print mode never runs.
+  //     The beautiful-pi banner rendering is the success signal: session_start
+  //     ran with ctx.hasUI enabled and no widget/command/tool threw.
+  //     Provider selection and account routing hooks fire here too (real
+  //     provider + model, no message → no LLM request).
+  const projectDir = join(tmp, "project");
+  mkdirSync(projectDir, { recursive: true });
+  ok("booting pi TUI (real runtime under a PTY, no credentials)");
+  const tui = await bootTuiPi(
+    PI_BIN,
+    ["--approve", "--provider", "openai", "--model", "gpt-5.5",
+     "--api-key", "invalid-key", "--session-dir", join(tmp, "sessions"),
+     "--session-id", "smoke-tui"],
+    { env: { ...process.env, HOME: tmp, PI_CODING_AGENT_DIR: agentDir }, cwd: projectDir },
+  );
+  if (tui.ok) {
+    ok("TUI rendered (banner visible — UI registration paths ran)");
+  } else if (tui.timedOut) {
+    fail("pi TUI did not render the banner within 60s");
+  } else {
+    fail(`pi TUI exited during startup (code ${tui.exitCode ?? "?"}`
+      + `${tui.signal ? ` signal ${tui.signal}` : ""}${tui.error ? `, ${tui.error}` : ""})`);
+  }
+  if (LOAD_ERROR_RE.test(tui.output)) {
+    fail(`extension load errors during TUI boot:\n${tui.output.slice(0, 800)}`);
+  } else {
+    ok("TUI boot: no extension load errors");
+  }
+
+  //     The compaction coordinator's session_start hook must have written the
+  //     provider-aware skip config into the clean agent dir at runtime.
+  const blackholeCfgPath = join(agentDir, "pi-blackhole", "pi-blackhole-config.json");
+  try {
+    const skip = JSON.parse(readFileSync(blackholeCfgPath, "utf8")).skipForProviders ?? [];
+    if (skip.includes("openai-codex")) {
+      ok("compaction coordinator ran at runtime (skipForProviders written during TUI boot)");
+    } else {
+      fail(`compaction coordinator wrote skipForProviders=${JSON.stringify(skip)} (expected openai-codex)`);
+    }
+  } catch (error) {
+    fail(`compaction skip config missing after TUI boot (${error.message})`);
+  }
+
+  // 6. Exercise the pi-blackhole fork's provider-aware skip guard at runtime:
+  //     drive the installed fork + coordinator through real session_before_compact
+  //     events and assert the observable provider selection (issue #13).
+  ok("exercising pi-blackhole fork skip guard at runtime");
+  const guard = run(
+    process.execPath,
+    ["--import=tsx", join(ROOT, "scripts", "smoke", "compaction-check.mts"), installed, agentDir],
+    { env: { ...process.env, HOME: tmp, PI_CODING_AGENT_DIR: agentDir }, timeout: 60_000 },
+  );
+  if (guard.status === 0) {
+    ok("pi-blackhole fork guard exercised at runtime (codex skips, non-codex compacts)");
+  } else {
+    fail(`compaction guard runtime check failed:\n${(guard.stderr || guard.stdout || "").slice(0, 800)}`);
   }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
