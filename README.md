@@ -199,8 +199,11 @@ for Codex sessions (no compaction, no observational-memory consolidation). The
 fork adds the `skipForProviders` config (file or
 `PI_BLACKHOLE_SKIP_PROVIDERS` env var); once the focused upstream PR merges,
 switching back to the official release is a one-line dependency bump with no
-code changes. The `/blackhole-memory` and `/blackhole-recall` commands remain
-available when Blackhole is loaded.
+code changes. The coordinator warns once per session when the guarantee could
+degrade: config write failure, `PI_BLACKHOLE_SKIP_PROVIDERS` set without
+`openai-codex` (env shadows the file), or an installed pi-blackhole without
+the fork capability. The `/blackhole-memory` and `/blackhole-recall` commands
+remain available when Blackhole is loaded.
 
 ### Configuration entry points
 

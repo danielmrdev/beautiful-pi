@@ -24,10 +24,18 @@ export function fakePi(): FakePi {
       for (const handler of handlers.get(name) ?? []) handler(data);
     },
     /**
-     * Emit mirroring pi's extension-runner semantics for session-before-
-     * events (e.g. `session_before_compact`): the last non-undefined handler
-     * result wins, and a result with `cancel` short-circuits (later handlers
-     * never run). Returns undefined when no handler produced a result.
+     * Emit replicating pi's extension-runner result semantics for
+     * session-before events (e.g. `session_before_compact`): the last
+     * non-undefined handler result wins, and a result with `cancel`
+     * short-circuits (later handlers never run). Returns undefined when no
+     * handler produced a result.
+     *
+     * Deliberate divergence from the real runner
+     * (dist/core/extensions/runner.js `emit`): handler errors are NOT caught
+     * per-handler — a throwing handler propagates instead of being reported
+     * and skipped. Tests here rely on that (a throw fails loudly), and
+     * last-wins is applied to any event the caller drives, not only
+     * session-before events.
      */
     async emitWithResult(name: string, data: unknown, ctx: unknown) {
       let result: unknown;
