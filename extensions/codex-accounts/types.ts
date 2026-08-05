@@ -48,6 +48,46 @@ export interface CodexPool {
   /** Round-robin pointer (index into credentialIds of the last used member). */
   lastUsedIndex: number;
   createdAt: string;
+  /**
+   * Member selection strategy for `/codex pool use`. Absent/"round-robin" is
+   * the deterministic rotation pointer scan; the others are advanced selection.
+   * Rate-limit failover always uses round-robin.
+   */
+  strategy?: PoolStrategy;
+  /** Schedule + member roles used by the "scheduled" strategy. */
+  schedule?: PoolSchedule;
+  /** Shell command invoked by the "custom" strategy to pick a member. */
+  selector?: string;
+}
+
+/** Member selection strategy for a pool. */
+export type PoolStrategy = "round-robin" | "quota-first" | "scheduled" | "custom";
+
+/** "HH:MM" (24h) inclusive window in the pool's local timezone. */
+export interface ScheduleTimeWindow {
+  start: string;
+  end: string;
+}
+
+/** "YYYY-MM-DD" inclusive date range. */
+export interface ScheduleDateRange {
+  start?: string;
+  end?: string;
+}
+
+/**
+ * The "scheduled" strategy config. Empty constraints match everything;
+ * members not listed in `memberRoles` act as primary.
+ */
+export interface PoolSchedule {
+  /** Empty/absent = no time constraint. An overnight window wraps past midnight. */
+  timeWindows?: ScheduleTimeWindow[];
+  /** Day-of-week filter, 0=Sunday..6=Saturday. Empty/absent = every day. */
+  days?: number[];
+  /** Date range filter (inclusive). */
+  dateRange?: ScheduleDateRange;
+  /** Per-member role; "backup" members are only used when no primary is eligible. */
+  memberRoles?: Record<string, "primary" | "backup">;
 }
 
 /** Beautiful-pi account namespace (the `accounts` key of the settings file). */

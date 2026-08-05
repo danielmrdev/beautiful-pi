@@ -17,6 +17,8 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
+// Node builtins follow the repo convention: require(), not import.
+const { exec } = require("node:child_process") as typeof import("node:child_process");
 import {
   loadGlobalAccountConfig,
   saveGlobalAccountConfig,
@@ -35,13 +37,29 @@ import {
   removePoolMembers,
   resolvePool,
   listPools,
+  setPoolStrategy,
+  setPoolSchedule,
+  clearPoolSchedule,
+  setPoolSelector,
+  clearPoolSelector,
 } from "./store.ts";
 import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId, activateAccountModel } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
-import { nextEligibleMember, getSharedRotationState, beginNewRequest, isCooldownActive } from "./rotation.ts";
+import { nextEligibleMember, getSharedRotationState, beginNewRequest, isCooldownActive, type EligibleMember, type RotationContext, type RotationState } from "./rotation.ts";
 import { rotationContextFrom } from "./context.ts";
-import type { AccountAuthStatus, AccountConfig, CodexAccount } from "./types.ts";
+import {
+  WEEKDAYS,
+  WEEKEND,
+  eligibleMembers,
+  isScheduleActive,
+  resolveCustomSelection,
+  selectQuotaFirst,
+  selectScheduled,
+} from "./strategies.ts";
+import { fetchAccountQuotaReport, formatAccountQuota, formatUnavailableReason } from "./quota.ts";
+import { SCHEDULE_DATE_RE, SCHEDULE_TIME_RE } from "./store.ts";
+import type { AccountAuthStatus, AccountConfig, CodexAccount, CodexPool, PoolSchedule } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
@@ -53,6 +71,7 @@ const USAGE = [
   "  switch [ref]     switch the active model to the account",
   "  list             list accounts with auth status",
   "  status [ref]     detailed status for one account",
+  "  quota [ref]      inspect quota windows (5h/7d usage) per account",
   "  migrate          run legacy multi-pass config migration",
   "",
   "/codex pool <subcommand>",
@@ -65,7 +84,15 @@ const USAGE = [
   "  delete <pool>               remove the pool",
   "  add <pool> <member...>      add members",
   "  remove <pool> <member...>   remove members",
-  "  use <pool>                  round-robin: activate the next eligible member",
+  "  use <pool>                  select a member (round-robin, quota-first, scheduled, or custom)",
+  "  strategy <pool> <round-robin|quota-first|scheduled|custom>",
+  "  schedule <pool> [<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]",
+  "  schedule clear <pool>       remove the schedule",
+  "  selector <pool> <command>   custom member selector (outputs a member ref)",
+  "  selector clear <pool>       remove the selector",
+  "",
+  "days <spec>: everyday | weekdays | weekend | sun,mon,... | mon-fri ranges",
+  "roles: <member>=<primary|backup>  (backup members used when no primary is eligible)",
 ].join("\n");
 
 function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error" = "info"): void {
@@ -251,6 +278,37 @@ async function cmdStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: st
   sendOutput(pi, lines);
 }
 
+async function cmdAccountQuota(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  if (cfg.accounts.length === 0) {
+    sendOutput(pi, ["No Codex accounts yet.", "Add one with: /codex account add <label>"]);
+    return;
+  }
+  const accounts = ref ? [pickAccount(cfg, ref)].filter((a): a is CodexAccount => !!a) : cfg.accounts;
+  if (accounts.length === 0) {
+    sendOutput(pi, ["No matching Codex account found."]);
+    return;
+  }
+  const lines = ["Codex quota"];
+  const allowed = accounts.filter((a) => isCredentialAllowed(ctx.cwd, a.credentialId));
+  for (const account of accounts) {
+    if (!isCredentialAllowed(ctx.cwd, account.credentialId)) {
+      lines.push(`  ${account.label}  [${account.credentialId}]  restricted in this project`);
+    }
+  }
+  // Fetch allowed accounts in parallel; each fetch has its own timeout.
+  const reports = await Promise.all(allowed.map((a) => fetchAccountQuotaReport(a)));
+  for (const report of reports) {
+    const { account } = report;
+    if (report.quota) {
+      lines.push(`  ${account.label}  [${account.credentialId}]  ${formatAccountQuota(report.quota)}`);
+    } else {
+      lines.push(`  ${account.label}  [${account.credentialId}]  unavailable: ${formatUnavailableReason(report.unavailableReason ?? "network")}`);
+    }
+  }
+  sendOutput(pi, lines);
+}
+
 async function cmdMigrate(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
   const summary = runMigration(agentDirPath(), ctx.cwd, { trusted: ctx.isProjectTrusted() });  const lines = [
     "Legacy multi-pass migration",
@@ -330,6 +388,9 @@ async function cmdPoolInspect(pi: ExtensionAPI, ctx: ExtensionCommandContext, re
     `Pool: ${pool.name} (${pool.enabled ? "enabled" : "disabled"})`,
     `  cooldown:    ${pool.cooldownSeconds}s after a rate limit`,
     `  next index:  #${pool.lastUsedIndex + 1} (rotation pointer)`,
+    `  strategy:    ${pool.strategy ?? "round-robin"}`,
+    ...(pool.schedule ? [`  schedule:    ${summarizeSchedule(pool.schedule)}`] : []),
+    ...(pool.selector ? [`  selector:    ${pool.selector}`] : []),
     "",
     ...(pool.credentialIds.length === 0
       ? ["  (no members — add some with /codex pool add)"]
@@ -416,9 +477,10 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
     notify(ctx, `Pool "${pool.name}" is disabled. Enable with: /codex pool enable ${pool.name}`, "warning");
     return;
   }
+  const rotCtx = rotationContextFrom(ctx);
   const state = getSharedRotationState();
   beginNewRequest(state);
-  const member = nextEligibleMember(pool, cfg, rotationContextFrom(ctx), state);
+  const member = await selectForStrategy(pool, cfg, rotCtx, state, ctx);
   if (!member) {
     notify(
       ctx,
@@ -439,6 +501,319 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
   };
   saveGlobalAccountConfig(withPointer);
   notify(ctx, `Pool "${pool.name}": active member is "${account.label}" (${member.credentialId}, ${model.id})`);
+}
+
+// ── Strategy selection ───────────────────────────────────────────────────────
+
+const WINDOW_RE = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
+
+const DAY_NAMES: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+};
+const DAY_NUM_TO_NAME: Record<number, string> = Object.fromEntries(
+  Object.entries(DAY_NAMES).map(([name, num]) => [num, name]),
+);
+
+/**
+ * Pick a pool member according to the pool's strategy. Every strategy degrades
+ * to deterministic round-robin when its specialized data is unavailable;
+ * quota-first fetches live quota for the eligible set (network failures and
+ * missing credentials simply exclude a member from the healthiest ranking).
+ */
+async function selectForStrategy(
+  pool: CodexPool,
+  cfg: AccountConfig,
+  rotCtx: RotationContext,
+  state: RotationState,
+  ctx: ExtensionCommandContext,
+): Promise<EligibleMember | undefined> {
+  const strategy = pool.strategy ?? "round-robin";
+  if (strategy === "quota-first") {
+    const members = eligibleMembers(pool, cfg, rotCtx, state);
+    const reports = await Promise.all(
+      members.map((m) => fetchAccountQuotaReport(cfg.accounts.find((a) => a.credentialId === m.credentialId)!)),
+    );
+    const quotaOf = (id: string) => reports.find((r) => r.account.credentialId === id)?.quota;
+    const member = selectQuotaFirst(pool, cfg, rotCtx, state, quotaOf);
+    if (member) {
+      const withData = reports.filter((r) => r.quota);
+      const noData = withData.length === 0;
+      const allExhausted = withData.length > 0 && withData.every((r) => r.quota!.status === "exhausted");
+      if (noData) {
+        notify(ctx, `Pool "${pool.name}": no quota data available — fell back to round-robin`, "warning");
+      } else if (allExhausted) {
+        notify(ctx, `Pool "${pool.name}": every account is at quota — fell back to round-robin`, "warning");
+      }
+    }
+    return member;
+  }
+  if (strategy === "scheduled") {
+    const now = new Date();
+    const member = selectScheduled(pool, cfg, rotCtx, state, pool.schedule, now);
+    if (member && !isScheduleActive(pool.schedule, now)) {
+      notify(ctx, `Pool "${pool.name}": schedule inactive — using round-robin`, "warning");
+    }
+    return member;
+  }
+  if (strategy === "custom") {
+    if (!pool.selector) {
+      notify(ctx, `Pool "${pool.name}": no selector configured — using round-robin (set one with /codex pool selector)`, "warning");
+      return nextEligibleMember(pool, cfg, rotCtx, state);
+    }
+    const members = eligibleMembers(pool, cfg, rotCtx, state);
+    const refOut = await execSelector(pool.selector, {
+      pool: { name: pool.name, credentialIds: pool.credentialIds },
+      eligible: members.map((m) => m.credentialId),
+      now: new Date().toISOString(),
+    });
+    const member = resolveCustomSelection(pool, cfg, rotCtx, state, refOut);
+    if (member) return member;
+    const reason = refOut
+      ? `selector returned an ineligible member ("${refOut}")`
+      : "selector produced no usable member";
+    notify(ctx, `Pool "${pool.name}": ${reason} — using round-robin`, "warning");
+    return nextEligibleMember(pool, cfg, rotCtx, state);
+  }
+  return nextEligibleMember(pool, cfg, rotCtx, state);
+}
+
+/** Run the custom selector shell command; resolves with its first stdout line. */
+function execSelector(selector: string, input: unknown): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    try {
+      const child = exec(selector, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+        if (error) return resolve(undefined);
+        const line = stdout.trim().split(/\r?\n/)[0]?.trim();
+        resolve(line || undefined);
+      });
+      const stdin = child.stdin;
+      if (stdin) {
+        // Selectors may ignore stdin (e.g. `echo`); a closed pipe must not crash.
+        stdin.on("error", () => {});
+        try {
+          stdin.end(JSON.stringify(input));
+        } catch {
+          // stdin already closed
+        }
+      }
+    } catch {
+      resolve(undefined);
+    }
+  });
+}
+
+async function cmdPoolStrategy(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, strategy, ...extra] = tokenize(rest);
+  if (!name || !strategy || extra.length > 0) {
+    notify(ctx, "Usage: /codex pool strategy <pool> <round-robin|quota-first|scheduled|custom>", "error");
+    return;
+  }
+  if (!resolvePool(cfg, name)) {
+    notify(ctx, `Pool "${name}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  const result = setPoolStrategy(cfg, name, strategy);
+  if (!result.ok) {
+    notify(ctx, `Could not set strategy: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Pool "${name}" strategy: ${strategy}`);
+}
+
+async function cmdPoolSchedule(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const tokens = tokenize(rest);
+  if (tokens.length === 0) {
+    notify(ctx, "Usage: /codex pool schedule <pool> [<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]", "error");
+    return;
+  }
+  // Accept both "schedule clear <pool>" and "schedule <pool> clear".
+  const clear = tokens.some((t) => t.toLowerCase() === "clear");
+  const name = tokens.find((t) => t.toLowerCase() !== "clear");
+  if (!name) {
+    notify(ctx, "Usage: /codex pool schedule clear <pool>", "error");
+    return;
+  }
+  const pool = resolvePool(cfg, name);
+  if (!pool) {
+    notify(ctx, `Pool "${name}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  if (clear) {
+    saveGlobalAccountConfig(clearPoolSchedule(cfg, name).cfg);
+    notify(ctx, `Cleared schedule for pool "${pool.name}"`);
+    return;
+  }
+  const parsed = parseScheduleArgs(pool, cfg, tokens.filter((t) => t !== name));
+  if (!parsed.schedule || parsed.errors.length > 0) {
+    notify(ctx, `Could not set schedule: ${parsed.errors.join("; ")}`, "error");
+    return;
+  }
+  const result = setPoolSchedule(cfg, name, parsed.schedule);
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Schedule for pool "${pool.name}": ${summarizeSchedule(parsed.schedule)}`);
+}
+
+async function cmdPoolSelector(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const tokens = tokenize(rest);
+  if (tokens.length === 0) {
+    notify(ctx, "Usage: /codex pool selector <pool> <command...>  (or: /codex pool selector clear <pool>)", "error");
+    return;
+  }
+  // Clear form is unambiguous: "selector clear <pool>".
+  if (tokens[0].toLowerCase() === "clear") {
+    const name = tokens[1];
+    if (!name) {
+      notify(ctx, "Usage: /codex pool selector clear <pool>", "error");
+      return;
+    }
+    const pool = resolvePool(cfg, name);
+    if (!pool) {
+      notify(ctx, `Pool "${name}" not found. See: /codex pool list`, "error");
+      return;
+    }
+    saveGlobalAccountConfig(clearPoolSelector(cfg, name).cfg);
+    notify(ctx, `Cleared selector for pool "${pool.name}"`);
+    return;
+  }
+  const [name, ...command] = tokens;
+  const pool = resolvePool(cfg, name);
+  if (!pool) {
+    notify(ctx, `Pool "${name}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  if (command.length === 0) {
+    notify(ctx, "Usage: /codex pool selector <pool> <command...>", "error");
+    return;
+  }
+  const result = setPoolSelector(cfg, name, command.join(" "));
+  if (!result.ok) {
+    notify(ctx, `Could not set selector: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  const saved = resolvePool(result.cfg, name)!;
+  notify(ctx, `Custom selector for pool "${pool.name}": ${saved.selector}`);
+}
+
+function parseDayToken(token: string): number[] | undefined {
+  const t = token.toLowerCase();
+  if (t === "everyday") return [];
+  if (t === "weekdays") return [...WEEKDAYS];
+  if (t === "weekend") return [...WEEKEND];
+  const range = /^([a-z]{3})-([a-z]{3})$/.exec(t);
+  if (range) {
+    const a = DAY_NAMES[range[1]];
+    const b = DAY_NAMES[range[2]];
+    if (a === undefined || b === undefined) return undefined;
+    if (a <= b) return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+    return [...Array.from({ length: 7 - a }, (_, i) => a + i), ...Array.from({ length: b + 1 }, (_, i) => i)];
+  }
+  const single = DAY_NAMES[t];
+  return single !== undefined ? [single] : undefined;
+}
+
+/** Parse `[<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]`. */
+function parseScheduleArgs(
+  pool: CodexPool,
+  cfg: AccountConfig,
+  tokens: string[],
+): { schedule?: PoolSchedule; errors: string[] } {
+  const schedule: PoolSchedule = {};
+  const errors: string[] = [];
+  let i = 0;
+  if (i < tokens.length && /^\d{2}:\d{2}-\d{2}:\d{2}/.test(tokens[i])) {
+    const windows: Array<{ start: string; end: string }> = [];
+    for (const w of tokens[i].split(",")) {
+      const match = WINDOW_RE.exec(w);
+      if (!match || !SCHEDULE_TIME_RE.test(match[1]) || !SCHEDULE_TIME_RE.test(match[2])) {
+        errors.push(`invalid time window "${w}" (HH:MM-HH:MM)`);
+        return { schedule: undefined, errors };
+      }
+      windows.push({ start: match[1], end: match[2] });
+    }
+    schedule.timeWindows = windows;
+    i++;
+  }
+  while (i < tokens.length) {
+    const kw = tokens[i].toLowerCase();
+    if (kw === "days") {
+      i++;
+      const days: number[] = [];
+      while (i < tokens.length && !["from", "to", "roles"].includes(tokens[i].toLowerCase())) {
+        for (const part of tokens[i].split(",")) {
+          const parsed = parseDayToken(part);
+          if (!parsed) {
+            errors.push(`unknown day "${part}" (sun..sat, mon-fri, weekdays, weekend, everyday)`);
+            return { schedule: undefined, errors };
+          }
+          days.push(...parsed);
+        }
+        i++;
+      }
+      if (days.length > 0) schedule.days = [...new Set(days)].sort();
+    } else if (kw === "from" || kw === "to") {
+      const date = tokens[i + 1];
+      if (!date || !SCHEDULE_DATE_RE.test(date)) {
+        errors.push(`invalid date after "${kw}" (YYYY-MM-DD)`);
+        return { schedule: undefined, errors };
+      }
+      schedule.dateRange = { ...schedule.dateRange, [kw === "from" ? "start" : "end"]: date };
+      i += 2;
+    } else if (kw === "roles") {
+      i++;
+      const memberRoles: Record<string, "primary" | "backup"> = {};
+      while (i < tokens.length) {
+        const pair = tokens[i];
+        const eq = pair.indexOf("=");
+        if (eq <= 0) {
+          errors.push(`invalid role "${pair}" (member=primary|backup)`);
+          return { schedule: undefined, errors };
+        }
+        const account = resolveAccount(cfg, pair.slice(0, eq));
+        const role = pair.slice(eq + 1).toLowerCase();
+        if (!account) {
+          errors.push(`unknown member "${pair.slice(0, eq)}"`);
+          return { schedule: undefined, errors };
+        }
+        if (!pool.credentialIds.includes(account.credentialId)) {
+          errors.push(`"${pair.slice(0, eq)}" is not a member of pool "${pool.name}"`);
+          return { schedule: undefined, errors };
+        }
+        if (role !== "primary" && role !== "backup") {
+          errors.push(`invalid role "${pair.slice(eq + 1)}" (primary|backup)`);
+          return { schedule: undefined, errors };
+        }
+        memberRoles[account.credentialId] = role;
+        i++;
+      }
+      if (Object.keys(memberRoles).length > 0) schedule.memberRoles = memberRoles;
+    } else {
+      errors.push(`unexpected token "${tokens[i]}"`);
+      return { schedule: undefined, errors };
+    }
+  }
+  if (Object.keys(schedule).length === 0) {
+    errors.push("no schedule constraints given (e.g. 09:00-17:00, days mon-fri)");
+    return { schedule: undefined, errors };
+  }
+  return { schedule, errors };
+}
+
+function summarizeSchedule(schedule: PoolSchedule): string {
+  const parts: string[] = [];
+  if (schedule.timeWindows?.length) parts.push(schedule.timeWindows.map((w) => `${w.start}-${w.end}`).join(","));
+  if (schedule.days?.length) parts.push("on " + schedule.days.map((d) => DAY_NUM_TO_NAME[d] ?? "?").join(","));
+  if (schedule.dateRange?.start) parts.push(`from ${schedule.dateRange.start}`);
+  if (schedule.dateRange?.end) parts.push(`to ${schedule.dateRange.end}`);
+  if (schedule.memberRoles) {
+    const roles = Object.entries(schedule.memberRoles).map(([id, role]) => `${id}=${role}`).join(", ");
+    parts.push(`roles ${roles}`);
+  }
+  return parts.join(" ") || "(always active)";
 }
 
 // ── Command registration ─────────────────────────────────────────────────────
@@ -462,6 +837,7 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "switch": await cmdSwitch(pi, ctx, ref); break;
           case "list":   await cmdList(pi, ctx); break;
           case "status": await cmdStatus(pi, ctx, ref); break;
+          case "quota":  await cmdAccountQuota(pi, ctx, ref); break;
           case "migrate": await cmdMigrate(pi, ctx); break;
           default:
             notify(ctx, USAGE, "info");
@@ -479,7 +855,10 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "delete":  await cmdPoolDelete(pi, ctx, restArgs.trim()); break;
           case "add":     await cmdPoolAdd(pi, ctx, restArgs); break;
           case "remove":  await cmdPoolRemove(pi, ctx, restArgs); break;
-          case "use":     await cmdPoolUse(pi, ctx, restArgs.trim()); break;
+          case "use":      await cmdPoolUse(pi, ctx, restArgs.trim()); break;
+          case "strategy": await cmdPoolStrategy(pi, ctx, restArgs); break;
+          case "schedule": await cmdPoolSchedule(pi, ctx, restArgs); break;
+          case "selector": await cmdPoolSelector(pi, ctx, restArgs); break;
           default:
             notify(ctx, USAGE, "info");
         }

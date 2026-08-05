@@ -30,6 +30,7 @@ after(() => {
 // Isolate each test from accounts left behind by earlier tests.
 beforeEach(() => {
   rmSync(join(tmpHome, ".pi", "agent", "beautiful-pi.json"), { force: true });
+  rmSync(join(tmpHome, ".pi", "agent", "auth.json"), { force: true });
 });
 
 interface FakeEnv {
@@ -396,5 +397,298 @@ describe("/codex pool", () => {
     const env = makeEnv();
     await env.handler("pool use nope");
     assert.ok(lastNotify(env).includes("not found"));
+  });
+});
+
+describe("/codex account quota", () => {
+  let originalFetch: typeof globalThis.fetch;
+  before(() => { originalFetch = globalThis.fetch; });
+  after(() => { globalThis.fetch = originalFetch; });
+
+  function stubUsage(usedPercent: number): void {
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        rate_limit: {
+          primary_window: { limit_window_seconds: 5 * 3600, used_percent: usedPercent, reset_at: Math.floor(Date.now() / 1000) + 3600 },
+        },
+      }),
+    })) as unknown as typeof fetch;
+  }
+
+  function writeCredential(id: string): void {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ [id]: { type: "oauth", access: "tok", expires: Math.floor(Date.now() / 1000) + 7200 } }));
+  }
+
+  test("reports quota windows for authenticated accounts", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    writeCredential("openai-codex-2");
+    stubUsage(32);
+    await env.handler("account quota");
+    const sent = env.sent[env.sent.length - 1];
+    assert.equal(sent.customType, "codex-accounts");
+    assert.ok(sent.content.includes("work"));
+    assert.ok(sent.content.includes("5h 32% used"), "window usage shown");
+    assert.ok(sent.content.includes("healthy"));
+  });
+
+  test("reports an actionable reason when no credential exists", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    let called = false;
+    globalThis.fetch = (async () => { called = true; return { ok: true, status: 200, json: async () => ({}) }; }) as unknown as typeof fetch;
+    await env.handler("account quota");
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("unavailable: not authenticated"));
+    assert.equal(called, false, "no fetch without a credential");
+  });
+
+  test("network failures surface as unavailable without breaking the command", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    writeCredential("openai-codex-2");
+    globalThis.fetch = (async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch;
+    await env.handler("account quota");
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("unavailable: usage endpoint unreachable"));
+  });
+
+  test("project-restricted accounts are reported without fetching", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    const restricted = join(tmpProject, "..", "other-proj");
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    const originalCwd = env.ctx.cwd;
+    env.ctx.cwd = restricted;
+    const projDir = join(restricted, ".pi");
+    mkdirSync(projDir, { recursive: true });
+    writeFileSync(join(projDir, "beautiful-pi.json"), JSON.stringify({ accounts: { allowedCredentialIds: ["openai-codex"] } }));
+    let called = false;
+    globalThis.fetch = (async () => { called = true; return { ok: true, status: 200, json: async () => ({}) }; }) as unknown as typeof fetch;
+    await env.handler("account quota");
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("restricted in this project"));
+    assert.equal(called, false);
+    env.ctx.cwd = originalCwd;
+  });
+});
+
+describe("/codex pool strategy/schedule/selector", () => {
+  async function withPool(env: FakeEnv & { handler: (a: string) => Promise<void> }): Promise<void> {
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+  }
+
+  test("strategy sets and persists the pool strategy", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod quota-first");
+    assert.equal(loadGlobalAccountConfig().pools![0].strategy, "quota-first");
+    await env.handler("pool strategy prod round-robin");
+    assert.equal(loadGlobalAccountConfig().pools![0].strategy, undefined, "round-robin is the implicit default");
+  });
+
+  test("strategy rejects unknown values", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod quantum");
+    assert.ok(lastNotify(env).includes("invalid strategy"));
+  });
+
+  test("schedule parses windows, days, dates, and roles", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool schedule prod 09:00-17:00,21:00-23:00 days mon-fri from 2026-01-01 to 2026-12-31 roles work=primary personal=backup");
+    const pool = loadGlobalAccountConfig().pools![0];
+    assert.deepEqual(pool.schedule?.days, [1, 2, 3, 4, 5]);
+    assert.deepEqual(pool.schedule?.dateRange, { start: "2026-01-01", end: "2026-12-31" });
+    assert.deepEqual(pool.schedule?.memberRoles, { "openai-codex-2": "primary", "openai-codex-3": "backup" });
+    assert.ok(lastNotify(env).includes("Schedule for pool"));
+  });
+
+  test("schedule rejects bad windows, days, and roles without saving", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool schedule prod 25:99-17:00");
+    assert.ok(lastNotify(env).includes("invalid time window"));
+    await env.handler("pool schedule prod 09:00-17:00 days xyz");
+    assert.ok(lastNotify(env).includes("unknown day"));
+    await env.handler("pool schedule prod 09:00-17:00 roles stranger=primary");
+    assert.ok(lastNotify(env).includes("unknown member"));
+    await env.handler("pool schedule prod 09:00-17:00 roles work=king");
+    assert.ok(lastNotify(env).includes("invalid role"));
+    const pool = loadGlobalAccountConfig().pools![0];
+    assert.equal(pool.schedule, undefined, "no partial schedule persisted");
+  });
+
+  test("schedule clear removes the schedule", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool schedule prod 09:00-17:00");
+    assert.ok(loadGlobalAccountConfig().pools![0].schedule);
+    await env.handler("pool schedule clear prod");
+    assert.equal(loadGlobalAccountConfig().pools![0].schedule, undefined);
+  });
+
+  test("selector stores a command and clear removes it", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool selector prod ./pick.sh --json");
+    assert.equal(loadGlobalAccountConfig().pools![0].selector, "./pick.sh --json");
+    await env.handler("pool selector clear prod");
+    assert.equal(loadGlobalAccountConfig().pools![0].selector, undefined);
+  });
+});
+
+describe("/codex pool use with strategies", () => {
+  let originalFetch: typeof globalThis.fetch;
+  before(() => { originalFetch = globalThis.fetch; });
+  after(() => { globalThis.fetch = originalFetch; });
+
+  function stubUsageByAccount(map: Record<string, number>): void {
+    globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string> }) => {
+      const token = init.headers["Authorization"].replace("Bearer ", "");
+      const used = map[token] ?? 50;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          rate_limit: {
+            primary_window: { limit_window_seconds: 5 * 3600, used_percent: used, reset_at: Math.floor(Date.now() / 1000) + 3600 },
+          },
+        }),
+      };
+    }) as unknown as typeof fetch;
+  }
+
+  function writeCredential(id: string, token: string): void {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, "auth.json");
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(require("node:fs").readFileSync(path, "utf-8")); } catch {}
+    existing[id] = { type: "oauth", access: token, expires: Math.floor(Date.now() / 1000) + 7200 };
+    require("node:fs").writeFileSync(path, JSON.stringify(existing));
+  }
+
+  async function withPool(env: FakeEnv & { handler: (a: string) => Promise<void> }): Promise<void> {
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+  }
+
+  test("round-robin is the default and rotates to the next member", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool use prod");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "fresh pool starts at the first member");
+    assert.equal(cfg.pools![0].lastUsedIndex, 0, "pointer advanced to the used member");
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[1].provider, "openai-codex-3", "second use rotates forward");
+    assert.equal(loadGlobalAccountConfig().pools![0].lastUsedIndex, 1);
+  });
+
+  test("quota-first picks the healthiest account", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod quota-first");
+    // work has 90% used (health 10), personal 10% used (health 90)
+    writeCredential("openai-codex-2", "tok-work");
+    writeCredential("openai-codex-3", "tok-personal");
+    stubUsageByAccount({ "tok-work": 90, "tok-personal": 10 });
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "healthiest member activated");
+    assert.ok(lastNotify(env).includes("personal"));
+  });
+
+  test("quota-first falls back to round-robin when no quota data exists", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod quota-first");
+    // no auth.json credentials → every report unauthenticated → no quota data
+    stubUsageByAccount({});
+    await env.handler("pool use prod");
+    assert.ok(
+      env.notifications.some((n) => n.msg.includes("fell back to round-robin")),
+      "fallback warning shown (before the success notify)",
+    );
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "still routes deterministically");
+  });
+
+  test("quota-first warns when every account is exhausted but still routes", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod quota-first");
+    writeCredential("openai-codex-2", "tok-work");
+    writeCredential("openai-codex-3", "tok-personal");
+    stubUsageByAccount({ "tok-work": 100, "tok-personal": 100 });
+    await env.handler("pool use prod");
+    assert.ok(env.notifications.some((n) => n.msg.includes("every account is at quota")), "exhaustion warning shown");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "round-robin fallback still routes");
+  });
+
+  test("scheduled prefers the primary member inside the window", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod scheduled");
+    await env.handler("pool schedule prod 00:00-23:59 roles personal=primary work=backup");
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "primary (personal) selected over backup");
+  });
+
+  test("scheduled degrades to round-robin outside the window", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod scheduled");
+    const hour = new Date().getHours();
+    const farStart = String((hour + 2) % 24).padStart(2, "0") + ":00";
+    const farEnd = String((hour + 3) % 24).padStart(2, "0") + ":00";
+    await env.handler(`pool schedule prod ${farStart}-${farEnd} roles personal=primary work=backup`);
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "backup used when schedule inactive");
+  });
+
+  test("custom selector picks the member it outputs", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod custom");
+    await env.handler("pool selector prod echo openai-codex-2");
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2");
+    assert.ok(lastNotify(env).includes("work"));
+  });
+
+  test("custom selector falls back when it returns an ineligible member", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod custom");
+    await env.handler("pool selector prod echo ghost");
+    await env.handler("pool use prod");
+    assert.ok(env.notifications.some((n) => n.msg.includes("ineligible member")), "fallback warning shown");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "round-robin fallback still routes");
+  });
+
+  test("custom selector falls back when no selector is configured", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod custom");
+    await env.handler("pool use prod");
+    assert.ok(env.notifications.some((n) => n.msg.includes("no selector configured")), "warning shown");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2");
   });
 });

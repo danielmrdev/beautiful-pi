@@ -74,7 +74,39 @@ export async function fetchOpenAIUsage(
 	apiKey: string,
 	authHeaders?: Record<string, string>,
 ): Promise<OpenAIUsage | null> {
-	if (!apiKey) return null;
+	const result = await fetchOpenAIUsageDetailed(apiKey, authHeaders);
+	return result.ok ? result.usage : null;
+}
+
+/** Why a usage fetch produced no usable quota data. */
+export type UsageFetchError =
+	| "unauthenticated"
+	| "expired"
+	| "unauthorized"
+	| "network"
+	| "http"
+	| "malformed";
+
+export type UsageFetchResult =
+	| { ok: true; usage: OpenAIUsage | null }
+	| { ok: false; reason: UsageFetchError };
+
+/**
+ * Fetch + classify usage data with an actionable failure reason.
+ * `expires` (epoch seconds) is checked upfront so an expired OAuth token is
+ * reported without a network round-trip. 2xx responses that carry no
+ * recognizable windows are "malformed" (the endpoint returned something we
+ * cannot route on).
+ */
+export async function fetchOpenAIUsageDetailed(
+	apiKey: string,
+	authHeaders?: Record<string, string>,
+	expires?: number,
+): Promise<UsageFetchResult> {
+	if (!apiKey) return { ok: false, reason: "unauthenticated" };
+	if (typeof expires === "number" && expires > 0 && expires * 1000 <= Date.now()) {
+		return { ok: false, reason: "expired" };
+	}
 
 	const headers: Record<string, string> = {
 		Authorization: `Bearer ${apiKey}`,
@@ -93,10 +125,21 @@ export async function fetchOpenAIUsage(
 			headers,
 			signal: controller.signal,
 		});
-		if (!response.ok) return null;
-		return parseOpenAIUsage(await response.json());
+		if (response.status === 401 || response.status === 403) {
+			return { ok: false, reason: "unauthorized" };
+		}
+		if (!response.ok) return { ok: false, reason: "http" };
+		let body: unknown;
+		try {
+			body = await response.json();
+		} catch {
+			return { ok: false, reason: "malformed" };
+		}
+		const usage = parseOpenAIUsage(body);
+		if (!usage) return { ok: false, reason: "malformed" };
+		return { ok: true, usage };
 	} catch {
-		return null;
+		return { ok: false, reason: "network" };
 	} finally {
 		clearTimeout(timeout);
 	}

@@ -70,11 +70,29 @@ export interface EligibleMember {
 }
 
 /**
+ * Core member eligibility shared by the round-robin scan and the advanced
+ * strategies: has an account entry, not attempted for this request, is
+ * authenticated, and passes the project restriction. Cooldown and pool
+ * membership are checked by the callers (membership is implied by the scan;
+ * cooldown lives next to the call sites).
+ */
+export function isEligibleMember(
+  credentialId: string,
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+): boolean {
+  if (state.attempted.has(credentialId)) return false;
+  if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return false;
+  if (!ctx.authConfigured(credentialId)) return false;
+  if (!ctx.allowed(credentialId)) return false;
+  return true;
+}
+
+/**
  * Pick the next eligible member of an enabled pool, scanning forward from the
- * pool's last-used index (wrapping once). A member is eligible when it has an
- * account entry, is not already attempted for this request, is not cooling
- * down, is authenticated, and passes the project restriction. The pool's
- * `lastUsedIndex` is NOT mutated — the caller persists the returned index.
+ * pool's last-used index (wrapping once). The pool's `lastUsedIndex` is NOT
+ * mutated — the caller persists the returned index.
  */
 export function nextEligibleMember(
   pool: CodexPool,
@@ -92,9 +110,7 @@ export function nextEligibleMember(
     const credentialId = members[index];
     if (state.attempted.has(credentialId)) continue;
     if (isCooldownActive(state, credentialId, now)) continue;
-    if (!cfg.accounts.some((a) => a.credentialId === credentialId)) continue;
-    if (!ctx.authConfigured(credentialId)) continue;
-    if (!ctx.allowed(credentialId)) continue;
+    if (!isEligibleMember(credentialId, cfg, ctx, state)) continue;
     return { credentialId, index };
   }
   return undefined;

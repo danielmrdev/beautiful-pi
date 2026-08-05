@@ -19,6 +19,13 @@ import {
   resolveAccount,
   agentDirPath,
   authFilePath,
+  createPool,
+  setPoolStrategy,
+  setPoolSchedule,
+  clearPoolSchedule,
+  setPoolSelector,
+  clearPoolSelector,
+  isPoolStrategy,
 } from "./store.ts";
 import { nextCodexCredentialId, isSuffixedCodexId } from "./provider.ts";
 import type { AccountConfig } from "./types.ts";
@@ -198,5 +205,109 @@ describe("settings file coexistence", () => {
     // Reverting settings to defaults must NOT delete the file while accounts exist.
     saveSettings(loadSettings());
     assert.ok(existsSync(settingsPath), "file kept when accounts namespace present");
+  });
+});
+
+describe("pool strategy ops", () => {
+  function cfgWithPool(extra: Record<string, unknown> = {}): AccountConfig {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "work" }).cfg;
+    const created = createPool(cfg, "prod", ["personal", "work"]);
+    assert.equal(created.created, true);
+    return { ...created.cfg, pools: created.cfg.pools!.map((p) => ({ ...p, ...extra })) };
+  }
+
+  test("setPoolStrategy accepts the four strategies and rejects others", () => {
+    for (const s of ["round-robin", "quota-first", "scheduled", "custom"] as const) {
+      const r = setPoolStrategy(cfgWithPool(), "prod", s);
+      assert.equal(r.ok, true);
+      assert.equal(r.cfg.pools![0].strategy, s === "round-robin" ? undefined : s);
+    }
+    const bad = setPoolStrategy(cfgWithPool(), "prod", "quantum");
+    assert.equal(bad.ok, false);
+    assert.ok(bad.errors[0].includes("quantum"));
+    assert.equal(isPoolStrategy("quota-first"), true);
+    assert.equal(isPoolStrategy("nope"), false);
+  });
+
+  test("setPoolStrategy reports an unknown pool", () => {
+    const r = setPoolStrategy(cfgWithPool(), "ghost", "quota-first");
+    assert.equal(r.ok, false);
+  });
+
+  test("setPoolSchedule stores and clearPoolSchedule removes the schedule", () => {
+    const withSchedule = setPoolSchedule(cfgWithPool(), "prod", {
+      timeWindows: [{ start: "09:00", end: "17:00" }],
+      days: [1, 2, 3, 4, 5],
+      dateRange: { start: "2026-01-01", end: "2026-12-31" },
+      memberRoles: { "openai-codex": "backup" },
+    });
+    assert.equal(withSchedule.ok, true);
+    const schedule = withSchedule.cfg.pools![0].schedule!;
+    assert.deepEqual(schedule.timeWindows, [{ start: "09:00", end: "17:00" }]);
+    assert.deepEqual(schedule.days, [1, 2, 3, 4, 5]);
+    assert.deepEqual(schedule.memberRoles, { "openai-codex": "backup" });
+
+    const cleared = clearPoolSchedule(withSchedule.cfg, "prod");
+    assert.equal(cleared.ok, true);
+    assert.equal(cleared.cfg.pools![0].schedule, undefined);
+  });
+
+  test("setPoolSchedule rejects an empty schedule", () => {
+    const r = setPoolSchedule(cfgWithPool(), "prod", {});
+    assert.equal(r.ok, false);
+  });
+
+  test("setPoolSelector stores and clearPoolSelector removes it", () => {
+    const set = setPoolSelector(cfgWithPool(), "prod", "./select.sh --json");
+    assert.equal(set.ok, true);
+    assert.equal(set.cfg.pools![0].selector, "./select.sh --json");
+    const cleared = clearPoolSelector(set.cfg, "prod");
+    assert.equal(cleared.ok, true);
+    assert.equal(cleared.cfg.pools![0].selector, undefined);
+  });
+
+  test("normalization drops invalid strategy, schedule, and selector entries", () => {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "work" }).cfg;
+    cfg = createPool(cfg, "prod", ["personal", "work"]).cfg;
+    saveGlobalAccountConfig(cfg, settingsPath);
+    const raw = JSON.parse(require("node:fs").readFileSync(settingsPath, "utf-8"));
+    raw.accounts.pools[0] = {
+      ...raw.accounts.pools[0],
+      strategy: "quantum",
+      schedule: { timeWindows: [{ start: "25:99", end: "17:00" }], days: [9], memberRoles: { x: "king" } },
+      selector: "   ",
+    };
+    require("node:fs").writeFileSync(settingsPath, JSON.stringify(raw, null, 2));
+
+    const loaded = loadGlobalAccountConfig(settingsPath);
+    const pool = loaded.pools![0];
+    assert.equal(pool.strategy, undefined, "invalid strategy dropped");
+    assert.equal(pool.schedule, undefined, "invalid schedule dropped");
+    assert.equal(pool.selector, undefined, "blank selector dropped");
+  });
+
+  test("normalization keeps valid strategy/schedule/selector through a round-trip", () => {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "work" }).cfg;
+    const withPool = createPool(cfg, "prod", ["personal", "work"]);
+    const configured = setPoolSelector(
+      setPoolSchedule(
+        setPoolStrategy(withPool.cfg, "prod", "scheduled").cfg,
+        "prod",
+        { timeWindows: [{ start: "22:00", end: "02:00" }], memberRoles: { "openai-codex-2": "backup" } },
+      ).cfg,
+      "prod",
+      "echo work",
+    );
+    saveGlobalAccountConfig(configured.cfg, settingsPath);
+
+    const loaded = loadGlobalAccountConfig(settingsPath);
+    const pool = loaded.pools![0];
+    assert.equal(pool.strategy, "scheduled");
+    assert.deepEqual(pool.schedule?.timeWindows, [{ start: "22:00", end: "02:00" }]);
+    assert.equal(pool.schedule?.memberRoles?.["openai-codex-2"], "backup");
+    assert.equal(pool.selector, "echo work");
   });
 });

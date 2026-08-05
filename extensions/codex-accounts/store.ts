@@ -9,7 +9,16 @@
 const { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, copyFileSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { randomUUID } = require("node:crypto");
-import type { AccountConfig, CodexAccount, CodexPool, ProjectAccountConfig } from "./types.ts";
+import type {
+  AccountConfig,
+  CodexAccount,
+  CodexPool,
+  PoolSchedule,
+  PoolStrategy,
+  ProjectAccountConfig,
+  ScheduleDateRange,
+  ScheduleTimeWindow,
+} from "./types.ts";
 
 /** The settings-file key that holds the account namespace. */
 export const ACCOUNTS_SECTION = "accounts";
@@ -101,12 +110,74 @@ function normalizeAccount(raw: unknown): CodexAccount | null {
   };
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** "HH:MM" validation shared by the pool schedule schema and its parser. */
+export const SCHEDULE_TIME_RE = TIME_RE;
+/** "YYYY-MM-DD" validation shared by the pool schedule schema and its parser. */
+export const SCHEDULE_DATE_RE = DATE_RE;
+
+export const POOL_STRATEGIES: readonly PoolStrategy[] = [
+  "round-robin",
+  "quota-first",
+  "scheduled",
+  "custom",
+];
+
+export function isPoolStrategy(value: unknown): value is PoolStrategy {
+  return typeof value === "string" && (POOL_STRATEGIES as readonly string[]).includes(value);
+}
+
+/** Tolerant schedule normalization: invalid entries are dropped, not fatal. */
+function normalizeSchedule(raw: unknown): PoolSchedule | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const entry = raw as Record<string, unknown>;
+  const schedule: PoolSchedule = {};
+  if (Array.isArray(entry.timeWindows)) {
+    const windows = entry.timeWindows
+      .map((w): ScheduleTimeWindow | null => {
+        if (!w || typeof w !== "object") return null;
+        const win = w as Record<string, unknown>;
+        if (typeof win.start !== "string" || typeof win.end !== "string") return null;
+        if (!TIME_RE.test(win.start) || !TIME_RE.test(win.end)) return null;
+        return { start: win.start, end: win.end };
+      })
+      .filter((w): w is ScheduleTimeWindow => w !== null);
+    if (windows.length > 0) schedule.timeWindows = windows;
+  }
+  if (Array.isArray(entry.days)) {
+    const days = entry.days.filter(
+      (d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 6,
+    );
+    if (days.length > 0) schedule.days = [...new Set(days)].sort();
+  }
+  const dr = entry.dateRange;
+  if (dr && typeof dr === "object" && !Array.isArray(dr)) {
+    const range = dr as Record<string, unknown>;
+    const dateRange: ScheduleDateRange = {};
+    if (typeof range.start === "string" && DATE_RE.test(range.start)) dateRange.start = range.start;
+    if (typeof range.end === "string" && DATE_RE.test(range.end)) dateRange.end = range.end;
+    if (dateRange.start || dateRange.end) schedule.dateRange = dateRange;
+  }
+  const roles = entry.memberRoles;
+  if (roles && typeof roles === "object" && !Array.isArray(roles)) {
+    const memberRoles: Record<string, "primary" | "backup"> = {};
+    for (const [id, role] of Object.entries(roles)) {
+      if (role === "primary" || role === "backup") memberRoles[id] = role;
+    }
+    if (Object.keys(memberRoles).length > 0) schedule.memberRoles = memberRoles;
+  }
+  return Object.keys(schedule).length > 0 ? schedule : undefined;
+}
+
 function normalizePool(raw: unknown): CodexPool | null {
   if (!raw || typeof raw !== "object") return null;
   const entry = raw as Record<string, unknown>;
   if (typeof entry.id !== "string" || !entry.id) return null;
   if (typeof entry.name !== "string" || !entry.name) return null;
   if (!Array.isArray(entry.credentialIds)) return null;
+  const schedule = normalizeSchedule(entry.schedule);
   return {
     id: entry.id,
     name: entry.name,
@@ -118,6 +189,9 @@ function normalizePool(raw: unknown): CodexPool | null {
         : 60,
     lastUsedIndex: typeof entry.lastUsedIndex === "number" && entry.lastUsedIndex >= -1 ? entry.lastUsedIndex : -1,
     createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+    ...(isPoolStrategy(entry.strategy) && entry.strategy !== "round-robin" ? { strategy: entry.strategy } : {}),
+    ...(schedule ? { schedule } : {}),
+    ...(typeof entry.selector === "string" && entry.selector.trim() ? { selector: entry.selector.trim() } : {}),
   };
 }
 
@@ -422,6 +496,100 @@ export function removePoolMembers(
     cfg: {
       ...cfg,
       pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, credentialIds: keep } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+// ── Pool strategy operations ─────────────────────────────────────────────────
+
+export function setPoolStrategy(
+  cfg: AccountConfig,
+  ref: string,
+  strategy: string,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  if (!isPoolStrategy(strategy)) {
+    return { cfg, ok: false, errors: [`invalid strategy "${strategy}" (round-robin, quota-first, scheduled, custom)`] };
+  }
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) =>
+        p.id === pool.id ? { ...p, ...(strategy === "round-robin" ? { strategy: undefined } : { strategy }) } : p
+      ),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function setPoolSchedule(
+  cfg: AccountConfig,
+  ref: string,
+  schedule: PoolSchedule,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  const normalized = normalizeSchedule(schedule);
+  if (!normalized) return { cfg, ok: false, errors: [`no valid schedule constraints given`] };
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, schedule: normalized } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function clearPoolSchedule(
+  cfg: AccountConfig,
+  ref: string,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, schedule: undefined } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function setPoolSelector(
+  cfg: AccountConfig,
+  ref: string,
+  selector: string,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  const trimmed = selector.trim();
+  if (!trimmed) return { cfg, ok: false, errors: [`selector command required`] };
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, selector: trimmed } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function clearPoolSelector(
+  cfg: AccountConfig,
+  ref: string,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, selector: undefined } : p)),
     },
     ok: true,
     errors: [],
