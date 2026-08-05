@@ -58,7 +58,7 @@ import {
   selectScheduled,
 } from "./strategies.ts";
 import { fetchAccountQuotaReport, formatAccountQuota, formatUnavailableReason } from "./quota.ts";
-import { SCHEDULE_DATE_RE, SCHEDULE_TIME_RE } from "./store.ts";
+import { DATE_RE, TIME_RE, WINDOW_RE } from "./schedule.ts";
 import type { AccountAuthStatus, AccountConfig, CodexAccount, CodexPool, PoolSchedule } from "./types.ts";
 
 const USAGE = [
@@ -289,7 +289,7 @@ async function cmdAccountQuota(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
     sendOutput(pi, ["No matching Codex account found."]);
     return;
   }
-  const lines = ["Codex quota"];
+  const lines = ["Codex quota — supported windows: 5h (primary), 7d (secondary)"];
   const allowed = accounts.filter((a) => isCredentialAllowed(ctx.cwd, a.credentialId));
   for (const account of accounts) {
     if (!isCredentialAllowed(ctx.cwd, account.credentialId)) {
@@ -505,8 +505,6 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
 
 // ── Strategy selection ───────────────────────────────────────────────────────
 
-const WINDOW_RE = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
-
 const DAY_NAMES: Record<string, number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
 };
@@ -534,7 +532,8 @@ async function selectForStrategy(
       members.map((m) => fetchAccountQuotaReport(cfg.accounts.find((a) => a.credentialId === m.credentialId)!)),
     );
     const quotaOf = (id: string) => reports.find((r) => r.account.credentialId === id)?.quota;
-    const member = selectQuotaFirst(pool, cfg, rotCtx, state, quotaOf);
+    // Pass the already-scanned members so the selector doesn't rescan.
+    const member = selectQuotaFirst(pool, cfg, rotCtx, state, quotaOf, Date.now(), members);
     if (member) {
       const withData = reports.filter((r) => r.quota);
       const noData = withData.length === 0;
@@ -745,7 +744,7 @@ function parseScheduleArgs(
     const windows: Array<{ start: string; end: string }> = [];
     for (const w of tokens[i].split(",")) {
       const match = WINDOW_RE.exec(w);
-      if (!match || !SCHEDULE_TIME_RE.test(match[1]) || !SCHEDULE_TIME_RE.test(match[2])) {
+      if (!match || !TIME_RE.test(match[1]) || !TIME_RE.test(match[2])) {
         errors.push(`invalid time window "${w}" (HH:MM-HH:MM)`);
         return { schedule: undefined, errors };
       }
@@ -773,7 +772,7 @@ function parseScheduleArgs(
       if (days.length > 0) schedule.days = [...new Set(days)].sort();
     } else if (kw === "from" || kw === "to") {
       const date = tokens[i + 1];
-      if (!date || !SCHEDULE_DATE_RE.test(date)) {
+      if (!date || !DATE_RE.test(date)) {
         errors.push(`invalid date after "${kw}" (YYYY-MM-DD)`);
         return { schedule: undefined, errors };
       }

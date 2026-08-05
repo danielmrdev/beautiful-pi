@@ -21,7 +21,12 @@ import {
   type RotationContext,
   type RotationState,
 } from "./rotation.ts";
+import { WEEKDAYS, WEEKEND, isScheduleActive, memberRoleOf } from "./schedule.ts";
 import type { AccountQuota } from "./quota.ts";
+
+// Re-export the shared schedule logic so the CLI and tests keep one import
+// site (the canonical definitions live in schedule.ts).
+export { WEEKDAYS, WEEKEND, isScheduleActive, memberRoleOf };
 
 /**
  * All eligible pool members in rotation order (shared scan from rotation.ts;
@@ -39,6 +44,10 @@ export { eligibleMembers };
  * data remains, falls back to round-robin — but known-exhausted members are
  * deprioritized below members whose headroom is unknown, so the fallback never
  * serves a known-exhausted account while an alternative exists.
+ *
+ * `members` may be precomputed by the caller (e.g. the command layer that
+ * already scanned for the quota fetches); it defaults to a fresh scan so the
+ * selector stays usable standalone.
  */
 export function selectQuotaFirst(
   pool: CodexPool,
@@ -47,8 +56,8 @@ export function selectQuotaFirst(
   state: RotationState,
   quotaOf: (credentialId: string) => AccountQuota | undefined,
   now: number = Date.now(),
+  members: EligibleMember[] = eligibleMembers(pool, cfg, ctx, state, now),
 ): EligibleMember | undefined {
-  const members = eligibleMembers(pool, cfg, ctx, state, now);
   if (members.length === 0) return undefined;
   const candidates = members
     .map((m) => ({ m, quota: quotaOf(m.credentialId) }))
@@ -75,62 +84,12 @@ export function selectQuotaFirst(
 
 // ── scheduled ────────────────────────────────────────────────────────────────
 
-/** Day-of-week constants for schedule parsing (0=Sunday..6=Saturday). */
-export const WEEKDAYS = [1, 2, 3, 4, 5];
-export const WEEKEND = [0, 6];
-
-function parseTime(hhmm: string): number | undefined {
-  // Strict zero-padded HH:MM, matching the stored schedule schema (store.ts).
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm.trim());
-  if (!match) return undefined;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-/**
- * True when the schedule's constraints hold for `now` (empty/absent = active).
- * Date range is inclusive; an overnight time window (start > end) wraps past
- * midnight.
- */
-export function isScheduleActive(schedule: PoolSchedule | undefined, now: Date): boolean {
-  if (!schedule) return false;
-  const { dateRange, days, timeWindows } = schedule;
-  const nowMs = now.getTime();
-  if (dateRange?.start) {
-    const startMs = Date.parse(`${dateRange.start}T00:00:00`);
-    if (!Number.isNaN(startMs) && nowMs < startMs) return false;
-  }
-  if (dateRange?.end) {
-    // end date is inclusive: compare against end-of-day
-    const endMs = Date.parse(`${dateRange.end}T23:59:59.999`);
-    if (!Number.isNaN(endMs) && nowMs > endMs) return false;
-  }
-  if (days && days.length > 0 && !days.includes(now.getDay())) return false;
-  if (timeWindows && timeWindows.length > 0) {
-    const t = now.getHours() * 60 + now.getMinutes();
-    const hit = timeWindows.some((w) => {
-      const start = parseTime(w.start);
-      const end = parseTime(w.end);
-      if (start === undefined || end === undefined) return false;
-      if (start <= end) return t >= start && t <= end;
-      return t >= start || t <= end;
-    });
-    if (!hit) return false;
-  }
-  return true;
-}
-
-/** Role of a member: members not listed in `memberRoles` act as primary. */
-export function memberRoleOf(
-  schedule: PoolSchedule | undefined,
-  credentialId: string,
-): "primary" | "backup" {
-  return schedule?.memberRoles?.[credentialId] ?? "primary";
-}
-
 /**
  * Scheduled selection: when the schedule is active, prefer eligible primary
  * members (rotation order), then eligible backups; round-robin otherwise
- * (inactive schedule or no roles configured).
+ * (inactive schedule or no roles configured). Every member has a role
+ * (unlisted members default to primary), so one of the two role filters is
+ * always non-empty once eligibility passed.
  */
 export function selectScheduled(
   pool: CodexPool,
@@ -145,9 +104,7 @@ export function selectScheduled(
   if (members.length === 0) return undefined;
   const primaries = members.filter((m) => memberRoleOf(schedule, m.credentialId) === "primary");
   if (primaries.length > 0) return primaries[0];
-  const backups = members.filter((m) => memberRoleOf(schedule, m.credentialId) === "backup");
-  if (backups.length > 0) return backups[0];
-  return nextEligibleMember(pool, cfg, ctx, state, now.getTime());
+  return members.find((m) => memberRoleOf(schedule, m.credentialId) === "backup");
 }
 
 // ── custom ───────────────────────────────────────────────────────────────────

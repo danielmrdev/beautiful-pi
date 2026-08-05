@@ -217,7 +217,7 @@ describe("fetchAccountQuotaReport", () => {
       sawAuth = init.headers["Authorization"];
       return { ok: true, status: 200, json: async () => ({ rate_limit: { primary_window: { limit_window_seconds: 5 * 3600, used_percent: 5 } } }) } as unknown as Response;
     }) as typeof fetch;
-    const report = await fetchAccountQuotaReport({ ...account("custom-provider"), provider: "custom" }, NOW);
+    const report = await fetchAccountQuotaReport({ ...account("custom-provider"), provider: "custom" });
     assert.equal(sawAuth, "Bearer sk-123");
     assert.ok(report.quota);
   });

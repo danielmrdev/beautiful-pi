@@ -19,6 +19,7 @@ import type {
   ScheduleDateRange,
   ScheduleTimeWindow,
 } from "./types.ts";
+import { DATE_RE, TIME_RE } from "./schedule.ts";
 
 /** The settings-file key that holds the account namespace. */
 export const ACCOUNTS_SECTION = "accounts";
@@ -110,13 +111,8 @@ function normalizeAccount(raw: unknown): CodexAccount | null {
   };
 }
 
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** "HH:MM" validation shared by the pool schedule schema and its parser. */
-export const SCHEDULE_TIME_RE = TIME_RE;
-/** "YYYY-MM-DD" validation shared by the pool schedule schema and its parser. */
-export const SCHEDULE_DATE_RE = DATE_RE;
+// Schedule grammar (TIME_RE/DATE_RE) lives in schedule.ts — the CLI parser
+// and the scheduled strategy import the same constants.
 
 export const POOL_STRATEGIES: readonly PoolStrategy[] = [
   "round-robin",
