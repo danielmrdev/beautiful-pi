@@ -30,7 +30,7 @@
   ],
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "test": "node --test --import=./test/setup.mjs --import=tsx extensions/**/*.test.ts",
+    "test": "node --test --import=./test/setup.mjs --import=tsx extensions/**/*.test.ts test/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "pack:check": "pnpm pack --dry-run",
     "gitleaks:scan": "gitleaks detect --no-git --verbose -s .",

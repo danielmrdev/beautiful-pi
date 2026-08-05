@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { existsSync, readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
 
-const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
 
 const expectedDependencies = {
   "@ogulcancelik/pi-codex-compaction": "0.1.3",
@@ -61,7 +61,7 @@ test("package catalog pins selected integrations and resources explicitly", () =
   for (const entry of [...expectedManifest.extensions, ...expectedManifest.themes]) {
     if (entry.startsWith("./")) {
       assert.equal(
-        existsSync(resolve(__dirname, "../../", entry)),
+        existsSync(resolve(__dirname, "../", entry)),
         true,
         `missing package resource: ${entry}`,
       );
