@@ -463,10 +463,13 @@ pnpm pack:check    # inspect tarball contents
 
 The tarball must contain runtime extensions, themes, assets, README, license,
 `CHANGELOG.md`, and `THIRD-PARTY-NOTICES.md`; it must not depend on a bundled
-`node_modules/` directory. A clean install should resolve the exact dependency
-versions from `package.json`, then load every explicit manifest resource in a
-TUI-capable Pi process with `PI_OFFLINE=1`. This smoke test needs no OAuth,
-Codex, quota, or network credentials; provider requests are not part of release
+`node_modules/` directory. Run `pnpm smoke` to verify a clean install: it packs
+the tarball, installs it into a fresh temporary agent directory (resolving every
+exact dependency, including the pi-blackhole fork pin), asserts every manifest
+path resolves, and boots the real pi CLI in print mode — reaching the auth stage
+("No API key found") is the success signal. The smoke test needs network access
+to the npm registry and the pi-blackhole fork on GitHub, but requires no OAuth,
+Codex, or quota credentials; provider requests are not part of release
 verification.
 
 ```bash
