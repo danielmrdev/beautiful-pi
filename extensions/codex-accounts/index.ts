@@ -9,10 +9,14 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { registerCodexCommand } from "./commands.ts";
 import { registerAllAccountProviders } from "./provider.ts";
 import { runMigration } from "./migration.ts";
+import { wireFailover } from "./failover.ts";
 import { agentDirPath, loadGlobalAccountConfig } from "./store.ts";
 
 export default function codexAccountsExtension(pi: ExtensionAPI): void {
   registerCodexCommand(pi);
+  // Rate-limit failover: capture runs on agent_end, rotate + re-send on
+  // agent_settled when a pool member hit a Codex rate limit.
+  wireFailover(pi);
 
   pi.on("session_start", (event, ctx: ExtensionContext) => {
     // Re-register suffixed account providers (idempotent) so `/login` and

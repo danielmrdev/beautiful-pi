@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a backup before the legacy file is consumed and safe-to-rerun semantics.
 - Trusted project-level account restriction via `allowedCredentialIds` in
   `.pi/beautiful-pi.json`.
+- `/codex pool` command surface: create, list, inspect, enable, disable, delete,
+  add/remove members, and round-robin `use` for Codex pools.
+- Codex pool rotation with eligibility checks (auth status, cooldowns, project
+  restrictions) and automatic rate-limit failover: on a Codex 429/quota error
+  the failed account is marked cooling down and attempted-for-this-request, the
+  model switches to the pool's next eligible member, and the interrupted
+  request is re-sent. Each account is attempted at most once per request;
+  non-rate-limit errors are never touched.
 
 ## [0.1.0] — 2026-07-17
 

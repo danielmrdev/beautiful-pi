@@ -9,7 +9,7 @@
 const { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, copyFileSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { randomUUID } = require("node:crypto");
-import type { AccountConfig, CodexAccount, ProjectAccountConfig } from "./types.ts";
+import type { AccountConfig, CodexAccount, CodexPool, ProjectAccountConfig } from "./types.ts";
 
 /** The settings-file key that holds the account namespace. */
 export const ACCOUNTS_SECTION = "accounts";
@@ -101,6 +101,26 @@ function normalizeAccount(raw: unknown): CodexAccount | null {
   };
 }
 
+function normalizePool(raw: unknown): CodexPool | null {
+  if (!raw || typeof raw !== "object") return null;
+  const entry = raw as Record<string, unknown>;
+  if (typeof entry.id !== "string" || !entry.id) return null;
+  if (typeof entry.name !== "string" || !entry.name) return null;
+  if (!Array.isArray(entry.credentialIds)) return null;
+  return {
+    id: entry.id,
+    name: entry.name,
+    credentialIds: entry.credentialIds.filter((v): v is string => typeof v === "string" && v.length > 0),
+    enabled: entry.enabled !== false,
+    cooldownSeconds:
+      typeof entry.cooldownSeconds === "number" && entry.cooldownSeconds > 0
+        ? entry.cooldownSeconds
+        : 60,
+    lastUsedIndex: typeof entry.lastUsedIndex === "number" && entry.lastUsedIndex >= -1 ? entry.lastUsedIndex : -1,
+    createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+  };
+}
+
 function normalizeConfig(raw: Record<string, unknown> | null): AccountConfig {
   const cfg: AccountConfig = { version: 1, accounts: [] };
   if (!raw) return cfg;
@@ -109,6 +129,11 @@ function normalizeConfig(raw: Record<string, unknown> | null): AccountConfig {
     cfg.accounts = accounts
       .map(normalizeAccount)
       .filter((a): a is CodexAccount => a !== null);
+  }
+  if (Array.isArray(raw.pools)) {
+    cfg.pools = raw.pools
+      .map(normalizePool)
+      .filter((p): p is CodexPool => p !== null);
   }
   if (typeof raw.activeAccountId === "string" && raw.activeAccountId) {
     cfg.activeAccountId = raw.activeAccountId;
@@ -271,4 +296,134 @@ export function resolveAccount(cfg: AccountConfig, ref: string): CodexAccount | 
       a.credentialId.toLowerCase() === needle ||
       a.label.toLowerCase() === needle,
   );
+}
+
+// ── Pool operations ──────────────────────────────────────────────────────────
+
+/** Resolve a pool by id or name. */
+export function resolvePool(cfg: AccountConfig, ref: string): CodexPool | undefined {
+  if (!ref) return undefined;
+  return (cfg.pools ?? []).find((p) => p.id === ref || p.name === ref.trim());
+}
+
+export function listPools(cfg: AccountConfig): CodexPool[] {
+  return [...(cfg.pools ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Resolve member refs (id/credentialId/label) to credential ids. */
+function resolveMemberIds(cfg: AccountConfig, refs: string[]): { ids: string[]; errors: string[] } {
+  const ids: string[] = [];
+  const errors: string[] = [];
+  for (const ref of refs) {
+    const account = resolveAccount(cfg, ref.trim());
+    if (account) {
+      if (!ids.includes(account.credentialId)) ids.push(account.credentialId);
+    } else {
+      errors.push(ref.trim());
+    }
+  }
+  return { ids, errors };
+}
+
+export interface CreatePoolResult {
+  cfg: AccountConfig;
+  pool?: CodexPool;
+  created: boolean;
+  errors: string[];
+}
+
+/**
+ * Create an enabled pool from member refs. Unknown refs are rejected and no
+ * pool is created. The pool name must be unique.
+ */
+export function createPool(
+  cfg: AccountConfig,
+  name: string,
+  memberRefs: string[],
+  options: { cooldownSeconds?: number } = {},
+): CreatePoolResult {
+  const trimmed = name.trim();
+  const errors: string[] = [];
+  if (!trimmed) {
+    errors.push("pool name required");
+    return { cfg, created: false, errors };
+  }
+  if (resolvePool(cfg, trimmed)) {
+    errors.push(`pool "${trimmed}" already exists`);
+    return { cfg, created: false, errors };
+  }
+  const { ids, errors: memberErrors } = resolveMemberIds(cfg, memberRefs);
+  if (memberErrors.length > 0) {
+    errors.push(...memberErrors);
+    return { cfg, created: false, errors };
+  }
+  const pool: CodexPool = {
+    id: randomUUID(),
+    name: trimmed,
+    credentialIds: ids,
+    enabled: true,
+    cooldownSeconds: options.cooldownSeconds ?? 60,
+    lastUsedIndex: -1,
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    cfg: { ...cfg, pools: [...(cfg.pools ?? []), pool] },
+    pool,
+    created: true,
+    errors: [],
+  };
+}
+
+export function deletePool(cfg: AccountConfig, ref: string): AccountConfig {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return cfg;
+  return { ...cfg, pools: (cfg.pools ?? []).filter((p) => p.id !== pool.id) };
+}
+
+export function setPoolEnabled(cfg: AccountConfig, ref: string, enabled: boolean): AccountConfig {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return cfg;
+  return {
+    ...cfg,
+    pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, enabled } : p)),
+  };
+}
+
+export function addPoolMembers(
+  cfg: AccountConfig,
+  ref: string,
+  memberRefs: string[],
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  const { ids, errors } = resolveMemberIds(cfg, memberRefs);
+  const merged = [...new Set([...pool.credentialIds, ...ids])];
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, credentialIds: merged } : p)),
+    },
+    ok: true,
+    errors,
+  };
+}
+
+export function removePoolMembers(
+  cfg: AccountConfig,
+  ref: string,
+  memberRefs: string[],
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const pool = resolvePool(cfg, ref);
+  if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
+  const { ids, errors } = resolveMemberIds(cfg, memberRefs);
+  if (errors.length > 0) return { cfg, ok: false, errors };
+  const keep = pool.credentialIds.filter((id) => !ids.includes(id));
+  return {
+    cfg: {
+      ...cfg,
+      pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, credentialIds: keep } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
 }

@@ -32,12 +32,31 @@ export interface AccountMigrationState {
   globalMigratedAt?: string;
 }
 
+/**
+ * A Codex pool: an ordered group of accounts for round-robin routing and
+ * rate-limit failover. `credentialIds` order is the rotation order.
+ */
+export interface CodexPool {
+  id: string;
+  /** Unique display name. */
+  name: string;
+  /** Member credential ids, in rotation order. */
+  credentialIds: string[];
+  enabled: boolean;
+  /** Seconds an exhausted member is skipped after a rate limit. */
+  cooldownSeconds: number;
+  /** Round-robin pointer (index into credentialIds of the last used member). */
+  lastUsedIndex: number;
+  createdAt: string;
+}
+
 /** Beautiful-pi account namespace (the `accounts` key of the settings file). */
 export interface AccountConfig {
   version: 1;
   accounts: CodexAccount[];
   activeAccountId?: string;
   migration?: AccountMigrationState;
+  pools?: CodexPool[];
 }
 
 /**

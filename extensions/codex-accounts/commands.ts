@@ -17,8 +17,7 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { Model } from "@earendil-works/pi-ai";
-import {
+import type { Model } from "@earendil-works/pi-ai";import {
   loadGlobalAccountConfig,
   saveGlobalAccountConfig,
   addAccount,
@@ -29,11 +28,20 @@ import {
   authFilePath,
   agentDirPath,
   storedCredentialIds,
+  createPool,
+  deletePool,
+  setPoolEnabled,
+  addPoolMembers,
+  removePoolMembers,
+  resolvePool,
+  listPools,
 } from "./store.ts";
 import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
-import type { AccountAuthStatus, AccountConfig, CodexAccount } from "./types.ts";
+import { nextEligibleMember, getSharedRotationState, beginOrContinueRequest, isCooldownActive } from "./rotation.ts";
+import { rotationContextFrom } from "./context.ts";
+import type { AccountAuthStatus, AccountConfig, CodexAccount, CodexPool } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
@@ -46,10 +54,30 @@ const USAGE = [
   "  list             list accounts with auth status",
   "  status [ref]     detailed status for one account",
   "  migrate          run legacy multi-pass config migration",
+  "",
+  "/codex pool <subcommand>",
+  "",
+  "  create <name> <member...>   create a pool from account refs",
+  "  list                        list pools with members",
+  "  inspect <pool>              per-member eligibility",
+  "  enable <pool>               re-enable a pool",
+  "  disable <pool>              disable a pool (no rotation/failover)",
+  "  delete <pool>               remove the pool",
+  "  add <pool> <member...>      add members",
+  "  remove <pool> <member...>   remove members",
+  "  use <pool>                  round-robin: activate the next eligible member",
 ].join("\n");
 
-function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error" = "info"): void {
-  if (ctx.hasUI) ctx.ui.notify(message, type);
+/** Minimal UI shape notify() needs — satisfied by ExtensionCommandContext. */
+export interface NotifyContext {
+  hasUI?: boolean;
+  ui?: {
+    notify(message: string, type?: "info" | "warning" | "error"): void;
+  };
+}
+
+export function notify(ctx: NotifyContext, message: string, type: "info" | "warning" | "error" = "info"): void {
+  if (ctx.hasUI) ctx.ui?.notify(message, type);
 }
 
 function sendOutput(pi: ExtensionAPI, lines: string[]): void {
@@ -261,6 +289,185 @@ async function cmdMigrate(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promi
   }
 }
 
+// ── Pool subcommands ─────────────────────────────────────────────────────────
+
+function poolMemberLabel(cfg: AccountConfig, credentialId: string): string {
+  return cfg.accounts.find((a) => a.credentialId === credentialId)?.label ?? credentialId;
+}
+
+function poolMemberStatus(ctx: ExtensionCommandContext, cfg: AccountConfig, credentialId: string): string {
+  const account = cfg.accounts.find((a) => a.credentialId === credentialId);
+  const status = account ? statusLineOf(ctx, account) : "no account entry";
+  const restricted = !isCredentialAllowed(ctx.cwd, credentialId);
+  const cooling = isCooldownActive(getSharedRotationState(), credentialId);
+  return `${status}${cooling ? " · cooling down" : ""}${restricted ? " · restricted in this project" : ""}`;
+}
+
+async function cmdPoolCreate(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...memberRefs] = tokenize(rest);
+  if (!name || memberRefs.length === 0) {
+    notify(ctx, "Usage: /codex pool create <name> <member...>  (members are account refs: label, credential id, or id)", "error");
+    return;
+  }
+  const result = createPool(cfg, name, memberRefs);
+  if (!result.created) {
+    notify(ctx, `Could not create pool: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  const unauthenticated = result.pool!.credentialIds.filter((id) => {
+    try {
+      return ctx.modelRegistry.getProviderAuthStatus(id)?.configured !== true;
+    } catch {
+      return true;
+    }
+  });
+  const warn = unauthenticated.length > 0
+    ? ` Note: ${unauthenticated.map((id) => poolMemberLabel(result.cfg, id)).join(", ")} not authenticated yet.`
+    : "";
+  notify(ctx, `Created pool "${name}" with ${result.pool!.credentialIds.length} member(s).${warn}`);
+}
+
+async function cmdPoolList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const pools = listPools(cfg);
+  if (pools.length === 0) {
+    sendOutput(pi, ["No Codex pools yet.", "Create one with: /codex pool create <name> <member...>"]);
+    return;
+  }
+  const rows = pools.map((p) => {
+    const members = p.credentialIds.map((id) => poolMemberLabel(cfg, id)).join(", ") || "(empty)";
+    return `${p.enabled ? "●" : "○"} ${p.name}  [${p.credentialIds.length} member(s): ${members}]`;
+  });
+  sendOutput(pi, ["Codex pools", ...rows, "", "● enabled · use /codex pool use <name> to rotate"]);
+}
+
+async function cmdPoolInspect(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const pool = resolvePool(cfg, ref);
+  if (!pool) {
+    sendOutput(pi, [`Pool "${ref}" not found. See: /codex pool list`]);
+    return;
+  }
+  const lines = [
+    `Pool: ${pool.name} (${pool.enabled ? "enabled" : "disabled"})`,
+    `  cooldown:    ${pool.cooldownSeconds}s after a rate limit`,
+    `  next index:  #${pool.lastUsedIndex + 1} (rotation pointer)`,
+    "",
+    ...(pool.credentialIds.length === 0
+      ? ["  (no members — add some with /codex pool add)"]
+      : pool.credentialIds.map((id) => `  ${poolMemberLabel(cfg, id)}  [${id}]  ${poolMemberStatus(ctx, cfg, id)}`)),
+  ];
+  sendOutput(pi, lines);
+}
+
+async function cmdPoolSetEnabled(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string, enabled: boolean): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const pool = resolvePool(cfg, ref);
+  if (!pool) {
+    notify(ctx, `Pool "${ref}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(setPoolEnabled(cfg, ref, enabled));
+  notify(ctx, `Pool "${pool.name}" ${enabled ? "enabled" : "disabled"}`);
+}
+
+async function cmdPoolDelete(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const pool = resolvePool(cfg, ref);
+  if (!pool) {
+    notify(ctx, `Pool "${ref}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(deletePool(cfg, ref));
+  notify(ctx, `Deleted pool "${pool.name}"`);
+}
+
+async function cmdPoolAdd(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...memberRefs] = tokenize(rest);
+  if (!name || memberRefs.length === 0) {
+    notify(ctx, "Usage: /codex pool add <pool> <member...>", "error");
+    return;
+  }
+  const result = addPoolMembers(cfg, name, memberRefs);
+  if (!result.ok) {
+    notify(ctx, `Could not add members: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  const added = result.errors.length === 0
+    ? `Added member(s) to pool "${name}"`
+    : `Added valid member(s); unknown: ${result.errors.join(", ")}`;
+  notify(ctx, added);
+}
+
+async function cmdPoolRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...memberRefs] = tokenize(rest);
+  if (!name || memberRefs.length === 0) {
+    notify(ctx, "Usage: /codex pool remove <pool> <member...>", "error");
+    return;
+  }
+  const result = removePoolMembers(cfg, name, memberRefs);
+  if (!result.ok) {
+    notify(ctx, `Could not remove members: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Removed member(s) from pool "${name}"`);
+}
+
+async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const pool = resolvePool(cfg, ref);
+  if (!pool) {
+    notify(ctx, `Pool "${ref}" not found. See: /codex pool list`, "error");
+    return;
+  }
+  if (!pool.enabled) {
+    notify(ctx, `Pool "${pool.name}" is disabled. Enable with: /codex pool enable ${pool.name}`, "warning");
+    return;
+  }
+  const state = getSharedRotationState();
+  beginOrContinueRequest(state, `__pool_use_${Date.now()}`);
+  const member = nextEligibleMember(pool, cfg, rotationContextFrom(ctx), state);
+  if (!member) {
+    notify(
+      ctx,
+      `No eligible member in pool "${pool.name}". Check authentication (/codex account list) and cooldowns (/codex pool inspect ${pool.name})`,
+      "warning",
+    );
+    return;
+  }
+  const account = cfg.accounts.find((a) => a.credentialId === member.credentialId)!;
+  registerAccountProvider(ctx.modelRegistry, account);
+  const models = ctx.modelRegistry.getAll().filter((m) => m.provider === member.credentialId);
+  const available = models.find((m) => {
+    try {
+      return ctx.modelRegistry.hasConfiguredAuth(m);
+    } catch {
+      return false;
+    }
+  });
+  if (!available) {
+    notify(ctx, `No models for "${account.label}". Authenticate first with: /login ${member.credentialId}`, "warning");
+    return;
+  }
+  const ok = await pi.setModel(available as Model<any>);
+  if (!ok) {
+    notify(ctx, `Could not activate ${account.label} (no API key available). Authenticate with: /login ${member.credentialId}`, "warning");
+    return;
+  }
+  const withPointer: AccountConfig = {
+    ...setActiveAccount(cfg, account.id),
+    pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member.index } : p)),
+  };
+  saveGlobalAccountConfig(withPointer);
+  notify(ctx, `Pool "${pool.name}": active member is "${account.label}" (${member.credentialId}, ${available.id})`);
+}
+
 // ── Command registration ─────────────────────────────────────────────────────
 
 function tokenize(args: string): string[] {
@@ -269,26 +476,43 @@ function tokenize(args: string): string[] {
 
 export function registerCodexCommand(pi: ExtensionAPI): void {
   pi.registerCommand("codex", {
-    description: "Manage Codex accounts (add, authenticate, switch, migrate)",
+    description: "Manage Codex accounts and pools (add, authenticate, switch, rotate, failover)",
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const [section, sub, ...rest] = tokenize(args);
-      if (section !== "account") {
-        notify(ctx, USAGE, "info");
+      if (section === "account") {
+        const ref = rest.join(" ").trim() || undefined;
+        switch (sub) {
+          case "add":    await cmdAdd(pi, ctx, rest.join(" ")); break;
+          case "login":  await cmdLogin(ctx, ref); break;
+          case "logout": await cmdLogout(ctx, ref); break;
+          case "remove": await cmdRemove(pi, ctx, ref); break;
+          case "switch": await cmdSwitch(pi, ctx, ref); break;
+          case "list":   await cmdList(pi, ctx); break;
+          case "status": await cmdStatus(pi, ctx, ref); break;
+          case "migrate": await cmdMigrate(pi, ctx); break;
+          default:
+            notify(ctx, USAGE, "info");
+        }
         return;
       }
-      const ref = rest.join(" ").trim() || undefined;
-      switch (sub) {
-        case "add":    await cmdAdd(pi, ctx, rest.join(" ")); break;
-        case "login":  await cmdLogin(ctx, ref); break;
-        case "logout": await cmdLogout(ctx, ref); break;
-        case "remove": await cmdRemove(pi, ctx, ref); break;
-        case "switch": await cmdSwitch(pi, ctx, ref); break;
-        case "list":   await cmdList(pi, ctx); break;
-        case "status": await cmdStatus(pi, ctx, ref); break;
-        case "migrate": await cmdMigrate(pi, ctx); break;
-        default:
-          notify(ctx, USAGE, "info");
+      if (section === "pool") {
+        const restArgs = rest.join(" ");
+        switch (sub) {
+          case "create":  await cmdPoolCreate(pi, ctx, restArgs); break;
+          case "list":    await cmdPoolList(pi, ctx); break;
+          case "inspect": await cmdPoolInspect(pi, ctx, restArgs.trim()); break;
+          case "enable":  await cmdPoolSetEnabled(pi, ctx, restArgs.trim(), true); break;
+          case "disable": await cmdPoolSetEnabled(pi, ctx, restArgs.trim(), false); break;
+          case "delete":  await cmdPoolDelete(pi, ctx, restArgs.trim()); break;
+          case "add":     await cmdPoolAdd(pi, ctx, restArgs); break;
+          case "remove":  await cmdPoolRemove(pi, ctx, restArgs); break;
+          case "use":     await cmdPoolUse(pi, ctx, restArgs.trim()); break;
+          default:
+            notify(ctx, USAGE, "info");
+        }
+        return;
       }
+      notify(ctx, USAGE, "info");
     },
   });
 }

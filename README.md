@@ -112,6 +112,15 @@ this package never writes it. In an interactive session:
 /codex account status [ref]  detailed status for one account
 /codex account remove [ref]  remove the account configuration entry
 /codex account migrate       run legacy multi-pass config migration
+/codex pool create <name> <member...>   create a pool from account refs
+/codex pool list            list pools with members
+/codex pool inspect <pool>  per-member eligibility (auth, cooldown, project)
+/codex pool enable <pool>   re-enable a pool
+/codex pool disable <pool>  disable a pool (no rotation/failover)
+/codex pool delete <pool>   remove the pool
+/codex pool add <pool> <member...>      add members
+/codex pool remove <pool> <member...>   remove members
+/codex pool use <pool>      round-robin: activate the next eligible member
 ```
 
 `ref` matches an account by label, credential id (`openai-codex`, `openai-codex-2`), or
@@ -127,6 +136,23 @@ Codex subscriptions become accounts and project `allowedSubs` becomes
 `allowedCredentialIds`. A backup (`*.bak-<timestamp>`) is created before the
 legacy file is renamed to `*.migrated`; migration is safe to rerun and skips
 malformed or unknown entries without touching valid account configuration.
+
+### Pools and rate-limit failover
+
+Pools group accounts for round-robin routing and automatic failover. A pool
+rotates through eligible members (authenticated, not cooling down, allowed in
+this project); `/codex pool use <name>` activates the pool's next eligible
+member and advances the rotation pointer. Membership is ordered — the order
+given at `create`/`add` is the rotation order.
+
+When a request fails with a Codex rate limit or quota error and the active
+account is a member of an enabled pool, beautiful-pi marks that account as
+attempted (per request) and cooling down (default 60s, per pool), switches to
+the pool's next eligible member, and re-sends the interrupted request. Each
+account is attempted at most once per request; when every member has been
+attempted the original error stands. Non-rate-limit failures never trigger
+failover. Cooldowns and the per-request replay state live in memory and reset
+when Pi restarts.
 
 Pi's own auth commands still work for a single account:
 

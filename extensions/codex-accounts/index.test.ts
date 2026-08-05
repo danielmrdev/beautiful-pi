@@ -21,6 +21,10 @@ describe("codex-accounts wiring", () => {
       assert.ok(pi.commands.has("codex"), "/codex command registered");
       const sessionStart = pi.events.get("session_start") ?? [];
       assert.ok(sessionStart.length >= 1, "session_start handler registered");
+      const agentEnd = pi.events.get("agent_end") ?? [];
+      assert.ok(agentEnd.length >= 1, "agent_end failover capture registered");
+      const agentSettled = pi.events.get("agent_settled") ?? [];
+      assert.ok(agentSettled.length >= 1, "agent_settled failover handler registered");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
