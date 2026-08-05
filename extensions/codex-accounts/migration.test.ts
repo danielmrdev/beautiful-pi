@@ -176,17 +176,25 @@ describe("project migration", () => {
     assert.deepEqual(unchanged?.allowedCredentialIds, ["openai-codex", "openai-codex-2"], "no re-migration");
   });
 
-  test("project without valid codex subs writes only the marker", () => {
+  test("project with only unknown allowedSubs is left untouched, not consumed", () => {
     const project = mkdtempSync(join(tmpdir(), "bpi-proj2-"));
     const piDir = join(project, ".pi");
     mkdirSync(piDir, { recursive: true });
-    writeFileSync(join(piDir, "multi-pass.json"), JSON.stringify({ allowedSubs: ["anthropic-2"] }));
+    const legacyPath = join(piDir, "multi-pass.json");
+    writeFileSync(legacyPath, JSON.stringify({ allowedSubs: ["anthropic-2"] }));
     const summary = migrateProjectLegacy(project);
-    assert.equal(summary.project, "skipped-malformed");
-    const cfg = loadProjectAccountConfig(project);
-    assert.equal(cfg?.allowedCredentialIds, undefined, "no restriction written");
-    assert.ok(cfg?.migratedFromLegacyAt, "marker written so rerun is idempotent");
-    assert.ok(existsSync(join(piDir, "multi-pass.json.migrated")));
+    assert.equal(summary.project, "skipped-invalid");
+    assert.equal(summary.warnings.length, 1, "unknown allowedSub warned");
+    assert.equal(loadProjectAccountConfig(project), null, "no marker or restriction written");
+    assert.ok(existsSync(legacyPath), "legacy file left in place");
+    assert.equal(existsSync(join(piDir, "multi-pass.json.migrated")), false, "not renamed");
+    assert.deepEqual(backupFiles(piDir), [], "no backup for invalid file");
+
+    // Fixing the file lets the migration run later.
+    writeFileSync(legacyPath, JSON.stringify({ allowedSubs: ["openai-codex"] }));
+    const retry = migrateProjectLegacy(project);
+    assert.equal(retry.project, "migrated");
+    assert.deepEqual(loadProjectAccountConfig(project)?.allowedCredentialIds, ["openai-codex"]);
   });
 });
 

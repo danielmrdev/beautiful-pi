@@ -10,9 +10,10 @@
  *   `*.migrated` once migration succeeded).
  * - Reruns are idempotent: the `.migrated` marker file and/or a migration
  *   marker short-circuit.
- * - Malformed files are left untouched (no backup, no rename) so a fixed file
- *   can migrate on a later run. Unknown/malformed entries are skipped with
- *   warnings; they never corrupt valid account configuration.
+ * - Malformed or semantically-invalid files are left untouched (no backup, no
+ *   rename) so a fixed file can migrate on a later run. Unknown/malformed
+ *   entries are skipped with warnings; they never corrupt valid account
+ *   configuration.
  * - pi's auth.json credential store is never read-write-touched here.
  */
 const { existsSync, readFileSync } = require("node:fs");
@@ -32,7 +33,7 @@ import type { AccountConfig, CodexAccount } from "./types.ts";
 
 export interface MigrationSummary {
   global: "none" | "already" | "migrated" | "skipped-malformed" | "failed";
-  project: "none" | "already" | "migrated" | "skipped-malformed" | "skipped-untrusted" | "failed";
+  project: "none" | "already" | "migrated" | "skipped-malformed" | "skipped-invalid" | "skipped-untrusted" | "failed";
   accountsCreated: number;
   warnings: string[];
 }
@@ -52,14 +53,12 @@ type LegacyOpen =
   | { kind: "none" }
   | { kind: "already" }
   | { kind: "malformed" }
-  | { kind: "failed" }
   | { kind: "ready"; parsed: LegacyConfig };
 
-const OPEN_STATUS: Record<Exclude<LegacyOpen["kind"], "ready">, "none" | "already" | "skipped-malformed" | "failed"> = {
+const OPEN_STATUS: Record<Exclude<LegacyOpen["kind"], "ready">, "none" | "already" | "skipped-malformed"> = {
   none: "none",
   already: "already",
   malformed: "skipped-malformed",
-  failed: "failed",
 };
 
 function emptySummary(): MigrationSummary {
@@ -82,11 +81,12 @@ function readLegacyJson(path: string): { parsed: LegacyConfig | null } {
 }
 
 /**
- * Shared legacy-file handling: idempotency checks, tolerant parse, backup.
+ * Shared legacy-file handling: idempotency checks, tolerant parse.
  * Malformed files are NOT consumed — they stay in place so a later fix can
  * migrate. Returns "none" (no file), "already" (consumed or marked before),
- * "malformed" (unparseable, untouched), "failed" (backup error), or "ready"
- * with a fresh backup in place.
+ * "malformed" (unparseable, untouched), or "ready" with the parsed config.
+ * Backing up is deferred to the callers so parseable-but-invalid files are
+ * not backed up either.
  */
 function openLegacy(
   path: string,
@@ -107,12 +107,17 @@ function openLegacy(
     warnings.push(`legacy ${path} is not valid JSON; left unchanged`);
     return { kind: "malformed" };
   }
+  return { kind: "ready", parsed };
+}
+
+/** Create a timestamped backup copy; true on success. On failure the legacy file is left untouched. */
+function backupLegacy(path: string, warnings: string[]): boolean {
   const backupPath = `${path}.bak-${Date.now()}`;
   if (!copyFile(path, backupPath)) {
     warnings.push(`could not create backup at ${backupPath}`);
-    return { kind: "failed" };
+    return false;
   }
-  return { kind: "ready", parsed };
+  return true;
 }
 
 /** Migrate the global legacy file into the account config. Never throws. */
@@ -171,6 +176,11 @@ export function migrateGlobalLegacy(agentDir: string): MigrationSummary {
     }
   }
 
+  if (!backupLegacy(legacyPath, summary.warnings)) {
+    summary.global = "failed";
+    return summary;
+  }
+
   nextCfg = {
     ...nextCfg,
     migration: { globalMigratedAt: new Date().toISOString() },
@@ -212,16 +222,29 @@ export function migrateProjectLegacy(cwd: string): MigrationSummary {
     valid.push(raw);
   }
 
+  if (valid.length === 0) {
+    // Parsed but semantically invalid: nothing migratable. Leave the file
+    // untouched (no marker, no rename, no backup) so a corrected file can
+    // migrate on a later run.
+    summary.project = "skipped-invalid";
+    return summary;
+  }
+
+  if (!backupLegacy(legacyPath, summary.warnings)) {
+    summary.project = "failed";
+    return summary;
+  }
+
   const merged = [...new Set([...(existing?.allowedCredentialIds ?? []), ...valid])];
   const migratedAt = new Date().toISOString();
   saveProjectAccountConfig(cwd, {
-    ...(merged.length > 0 ? { allowedCredentialIds: merged } : {}),
+    allowedCredentialIds: merged,
     migratedFromLegacyAt: migratedAt,
   });
 
   renameFile(legacyPath, migratedPath);
 
-  summary.project = valid.length > 0 ? "migrated" : "skipped-malformed";
+  summary.project = "migrated";
   return summary;
 }
 
