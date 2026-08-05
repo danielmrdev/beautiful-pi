@@ -99,8 +99,36 @@ packages and are not included. See
 
 ### Provider and compaction commands
 
-beautiful-pi uses Pi's built-in provider auth; it does not add a second Codex
-account store or rotate credentials. In an interactive session:
+beautiful-pi manages multiple Codex subscriptions on top of Pi's built-in
+provider auth. Pi owns the OAuth credential store (`~/.pi/agent/auth.json`);
+this package never writes it. In an interactive session:
+
+```text
+/codex account add <label>   create a new Codex account (e.g. work, personal)
+/codex account login [ref]   authenticate the account (run the shown /login)
+/codex account logout [ref]  remove the stored credential (run the shown /logout)
+/codex account switch [ref]  switch the active model to the account
+/codex account list          list accounts with auth status
+/codex account status [ref]  detailed status for one account
+/codex account remove [ref]  remove the account configuration entry
+/codex account migrate       run legacy multi-pass config migration
+```
+
+`ref` matches an account by label, credential id (`openai-codex`, `openai-codex-2`), or
+id. Adding an account registers its provider with Pi's `/login`, so
+`/login openai-codex-2` starts the normal OAuth flow; `/logout openai-codex-2`
+removes that credential. Accounts are stored under the `accounts` key of
+`~/.pi/agent/beautiful-pi.json`; a trusted project can restrict which accounts
+are usable via `allowedCredentialIds` in `.pi/beautiful-pi.json`.
+
+Legacy `pi-multi-pass` configuration (global `~/.pi/agent/multi-pass.json` and
+project `.pi/multi-pass.json`) migrates automatically on session start: valid
+Codex subscriptions become accounts and project `allowedSubs` becomes
+`allowedCredentialIds`. A backup (`*.bak-<timestamp>`) is created before the
+legacy file is renamed to `*.migrated`; migration is safe to rerun and skips
+malformed or unknown entries without touching valid account configuration.
+
+Pi's own auth commands still work for a single account:
 
 ```text
 /login openai-codex       configure or refresh Codex OAuth
@@ -115,8 +143,7 @@ pi auth print-bearer-token --provider openai-codex --model gpt-5.5
 ```
 
 `pi auth` reads stored credentials and never accepts them as command-line input.
-Use `pi auth --help` for the exact command surface; there are no
-`/codex-account-*` or account-pool commands in this release.
+Use `pi auth --help` for the exact command surface.
 
 Codex native remote compaction is enabled only for `openai-codex` models. It
 uses the Codex Responses API, keeps its opaque checkpoint in Pi's native

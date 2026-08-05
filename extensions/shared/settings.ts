@@ -65,7 +65,12 @@ const DEFAULTS: BeautifulPiSettings = (() => {
 function loadUserOverrides(): Partial<BeautifulPiSettings> {
   if (!existsSync(USER_SETTINGS_PATH)) return {};
   try {
-    return JSON.parse(readFileSync(USER_SETTINGS_PATH, "utf-8"));
+    const raw = JSON.parse(readFileSync(USER_SETTINGS_PATH, "utf-8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    // The `accounts` namespace is managed by the codex-accounts store, not by
+    // the settings UI — strip it so it never leaks into loadSettings().
+    const { accounts: _accounts, ...rest } = raw as Record<string, unknown>;
+    return rest as Partial<BeautifulPiSettings>;
   } catch {
     return {};
   }
@@ -111,9 +116,23 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
     toSave.opencodeGoAuthCookie = settings.opencodeGoAuthCookie;
   }
 
+  // Preserve the `accounts` namespace owned by the codex-accounts store.
+  let accounts: unknown;
+  try {
+    if (existsSync(USER_SETTINGS_PATH)) {
+      const raw = JSON.parse(readFileSync(USER_SETTINGS_PATH, "utf-8"));
+      if (raw && typeof raw === "object" && !Array.isArray(raw) && "accounts" in raw) {
+        accounts = (raw as Record<string, unknown>).accounts;
+      }
+    }
+  } catch {
+    // corrupt file: treat as no accounts
+  }
+
   // When everything matches defaults, delete the stale file (if any) instead
-  // of leaving it on disk where it would be re-read after /reload.
-  if (Object.keys(toSave).length === 0) {
+  // of leaving it on disk where it would be re-read after /reload. Unless the
+  // account namespace is present — then keep the file and rewrite only settings.
+  if (Object.keys(toSave).length === 0 && accounts === undefined) {
     try { unlinkSync(USER_SETTINGS_PATH); } catch { /* file may not exist */ }
     invalidateSettingsCache();
     return;
@@ -121,7 +140,9 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
 
   try {
     mkdirSync(dirname(USER_SETTINGS_PATH), { recursive: true });
-    writeFileSync(USER_SETTINGS_PATH, JSON.stringify(toSave, null, 2) + "\n");
+    const out: Record<string, unknown> = { ...toSave };
+    if (accounts !== undefined) out.accounts = accounts;
+    writeFileSync(USER_SETTINGS_PATH, JSON.stringify(out, null, 2) + "\n");
   } catch {
     // Silently ignore permission or I/O errors (e.g. read-only filesystem)
   }

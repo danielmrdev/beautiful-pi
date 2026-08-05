@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- `/codex account` command surface: add, authenticate, log out, remove, switch,
+  inspect, and migrate Codex subscriptions on top of Pi's OAuth credential store.
+- Provider adapter registry with a Codex adapter — the seam for future
+  providers (e.g. opencode-go) to reuse the account surface.
+- Automatic migration of legacy `pi-multi-pass` configuration (global and
+  project) into the `accounts` namespace of `~/.pi/agent/beautiful-pi.json`,
+  with a backup before the legacy file is consumed and safe-to-rerun semantics.
+- Trusted project-level account restriction via `allowedCredentialIds` in
+  `.pi/beautiful-pi.json`.
 
 ## [0.1.0] — 2026-07-17
 

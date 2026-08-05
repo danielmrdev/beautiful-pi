@@ -7,9 +7,11 @@ import userStyleExtension from "./user-style/index.ts";
 import customMessageExtension from "./custom-message/index.ts";
 import settingsExtension from "./settings/index.ts";
 import sessionTitleExtension from "./session-title/index.ts";
+import codexAccountsExtension from "./codex-accounts/index.ts";
 
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /bpi (+ /beautiful-pi alias)
+  codexAccountsExtension(pi);    // register /codex account + legacy migration
   sessionTitleExtension(pi);
   bannerExtension(pi);
   footerExtension(pi);
