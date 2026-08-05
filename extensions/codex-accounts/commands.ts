@@ -358,7 +358,8 @@ async function cmdAccountQuota(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
 }
 
 async function cmdMigrate(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-  const summary = runMigration(agentDirPath(), ctx.cwd, { trusted: ctx.isProjectTrusted() });  const lines = [
+  const summary = runMigration(agentDirPath(), ctx.cwd, { trusted: ctx.isProjectTrusted() });
+  const lines = [
     "Legacy multi-pass migration",
     `  global:  ${summary.global}`,
     `  project: ${summary.project}${summary.project === "skipped-untrusted" ? " (project not trusted)" : ""}`,

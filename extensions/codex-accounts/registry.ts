@@ -36,7 +36,6 @@ function formatExpiry(credential: Credential | undefined): string {
 const codexAdapter: ProviderAccountAdapter = {
   id: "openai-codex",
   displayName: "OpenAI Codex",
-  credentialType: "oauth",
   buildProvider(credentialId: string, label?: string): Provider | undefined {
     try {
       // Pi's extension loader aliases the pi-ai root to the compat entrypoint

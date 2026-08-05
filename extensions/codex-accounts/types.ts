@@ -189,7 +189,6 @@ export interface ProviderAccountAdapter {
   /** Provider id in pi's model registry (e.g. "openai-codex"). */
   id: string;
   displayName: string;
-  credentialType: "oauth" | "apiKey";
   /**
    * Build a pi-ai Provider for a suffixed credential id so that pi's built-in
    * `/login` can authenticate it and its models become selectable. Returns
