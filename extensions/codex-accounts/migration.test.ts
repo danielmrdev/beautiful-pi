@@ -61,7 +61,6 @@ describe("global migration", () => {
     assert.ok(cfg.accounts[0].active, "first migrated account becomes active");
     assert.equal(cfg.activeAccountId, cfg.accounts[0].id, "activeAccountId set");
     assert.ok(cfg.migration?.globalMigratedAt);
-    assert.ok(cfg.migration?.globalSourceHash);
 
     assert.equal(backupFiles(agentDir).length, 1, "backup created before changing legacy file");
     assert.ok(existsSync(join(agentDir, "multi-pass.json.migrated")), "legacy file renamed");
@@ -79,19 +78,28 @@ describe("global migration", () => {
     assert.equal(backupFiles(agentDir).length, 1, "no extra backup on rerun");
   });
 
-  test("malformed legacy JSON is skipped without corrupting config", () => {
+  test("malformed legacy JSON is left untouched, not consumed", () => {
     const fresh = mkdtempSync(join(tmpdir(), "bpi-malformed-"));
     const freshAgent = join(fresh, ".pi", "agent");
     mkdirSync(freshAgent, { recursive: true });
     process.env["HOME"] = fresh;
-    legacyGlobal(freshAgent, "{not json");
+    const legacyPath = legacyGlobal(freshAgent, "{not json");
 
     const summary = migrateGlobalLegacy(freshAgent);
     assert.equal(summary.global, "skipped-malformed");
     assert.ok(summary.warnings.length > 0);
     const cfg = loadGlobalAccountConfig(join(freshAgent, "beautiful-pi.json"));
     assert.deepEqual(cfg.accounts, [], "no accounts invented from malformed file");
-    assert.ok(existsSync(join(freshAgent, "multi-pass.json.migrated")));
+    // A malformed file is NOT consumed: fixing it must allow a later migration.
+    assert.ok(existsSync(legacyPath), "malformed file left in place");
+    assert.equal(existsSync(join(freshAgent, "multi-pass.json.migrated")), false, "not renamed");
+    assert.deepEqual(backupFiles(freshAgent), [], "no backup for unparsed file");
+
+    // Fixing the file lets the migration run.
+    writeFileSync(legacyPath, JSON.stringify({ subscriptions: [{ provider: "openai-codex", label: "fixed" }] }));
+    const retry = migrateGlobalLegacy(freshAgent);
+    assert.equal(retry.global, "migrated");
+    assert.equal(loadGlobalAccountConfig(join(freshAgent, "beautiful-pi.json")).accounts.length, 1);
   });
 
   test("unknown providers and malformed entries are skipped individually", () => {
@@ -153,6 +161,7 @@ describe("project migration", () => {
     assert.equal(summary.warnings.length, 2, "unknown provider + empty entry warned");
     const cfg = loadProjectAccountConfig(project);
     assert.deepEqual(cfg?.allowedCredentialIds, ["openai-codex", "openai-codex-2"]);
+    assert.ok(cfg?.migratedFromLegacyAt, "per-project marker written");
     assert.ok(existsSync(join(piDir, "multi-pass.json.migrated")));
     assert.equal(existsSync(join(piDir, "multi-pass.json")), false);
     assert.equal(backupFiles(piDir).length, 1);
@@ -167,14 +176,16 @@ describe("project migration", () => {
     assert.deepEqual(unchanged?.allowedCredentialIds, ["openai-codex", "openai-codex-2"], "no re-migration");
   });
 
-  test("project without valid codex subs writes no restriction", () => {
+  test("project without valid codex subs writes only the marker", () => {
     const project = mkdtempSync(join(tmpdir(), "bpi-proj2-"));
     const piDir = join(project, ".pi");
     mkdirSync(piDir, { recursive: true });
     writeFileSync(join(piDir, "multi-pass.json"), JSON.stringify({ allowedSubs: ["anthropic-2"] }));
     const summary = migrateProjectLegacy(project);
     assert.equal(summary.project, "skipped-malformed");
-    assert.equal(loadProjectAccountConfig(project), null, "no restriction written");
+    const cfg = loadProjectAccountConfig(project);
+    assert.equal(cfg?.allowedCredentialIds, undefined, "no restriction written");
+    assert.ok(cfg?.migratedFromLegacyAt, "marker written so rerun is idempotent");
     assert.ok(existsSync(join(piDir, "multi-pass.json.migrated")));
   });
 });

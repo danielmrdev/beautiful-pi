@@ -18,10 +18,6 @@ export function getProviderAdapter(id: string): ProviderAccountAdapter | undefin
   return adapters.get(id);
 }
 
-export function listProviderAdapters(): ProviderAccountAdapter[] {
-  return [...adapters.values()];
-}
-
 // ── Codex adapter ────────────────────────────────────────────────────────────
 
 function remapModels(base: Provider, credentialId: string): Model<any>[] {

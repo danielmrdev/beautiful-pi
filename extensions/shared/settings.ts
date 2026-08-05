@@ -2,6 +2,8 @@
  * Settings loader + safe color helpers for beautiful-pi.
  */
 
+import { ACCOUNTS_SECTION } from "../codex-accounts/store.ts";
+
 const { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 
@@ -69,7 +71,7 @@ function loadUserOverrides(): Partial<BeautifulPiSettings> {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
     // The `accounts` namespace is managed by the codex-accounts store, not by
     // the settings UI — strip it so it never leaks into loadSettings().
-    const { accounts: _accounts, ...rest } = raw as Record<string, unknown>;
+    const { [ACCOUNTS_SECTION]: _accounts, ...rest } = raw as Record<string, unknown>;
     return rest as Partial<BeautifulPiSettings>;
   } catch {
     return {};
@@ -121,8 +123,8 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
   try {
     if (existsSync(USER_SETTINGS_PATH)) {
       const raw = JSON.parse(readFileSync(USER_SETTINGS_PATH, "utf-8"));
-      if (raw && typeof raw === "object" && !Array.isArray(raw) && "accounts" in raw) {
-        accounts = (raw as Record<string, unknown>).accounts;
+      if (raw && typeof raw === "object" && !Array.isArray(raw) && ACCOUNTS_SECTION in raw) {
+        accounts = (raw as Record<string, unknown>)[ACCOUNTS_SECTION];
       }
     }
   } catch {
@@ -141,7 +143,7 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
   try {
     mkdirSync(dirname(USER_SETTINGS_PATH), { recursive: true });
     const out: Record<string, unknown> = { ...toSave };
-    if (accounts !== undefined) out.accounts = accounts;
+    if (accounts !== undefined) out[ACCOUNTS_SECTION] = accounts;
     writeFileSync(USER_SETTINGS_PATH, JSON.stringify(out, null, 2) + "\n");
   } catch {
     // Silently ignore permission or I/O errors (e.g. read-only filesystem)

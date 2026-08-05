@@ -26,13 +26,14 @@ import {
   setActiveAccount,
   resolveAccount,
   isCredentialAllowed,
-  agentDirPath,
   authFilePath,
+  agentDirPath,
+  storedCredentialIds,
 } from "./store.ts";
 import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
-import type { AccountConfig, CodexAccount, ProviderAccountAdapter } from "./types.ts";
+import type { AccountAuthStatus, AccountConfig, CodexAccount } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
@@ -59,7 +60,8 @@ function sendOutput(pi: ExtensionAPI, lines: string[]): void {
   }, { triggerTurn: false });
 }
 
-function accountOrError(cfg: AccountConfig, ref: string | undefined): CodexAccount | undefined {
+/** The referenced account, or the active/first account when no ref is given. */
+function pickAccount(cfg: AccountConfig, ref: string | undefined): CodexAccount | undefined {
   if (!ref) {
     const active = cfg.activeAccountId
       ? cfg.accounts.find((a) => a.id === cfg.activeAccountId)
@@ -69,25 +71,33 @@ function accountOrError(cfg: AccountConfig, ref: string | undefined): CodexAccou
   return resolveAccount(cfg, ref);
 }
 
-function adapterFor(account: CodexAccount): ProviderAccountAdapter | undefined {
-  return getProviderAdapter(account.provider);
-}
-
-function authStatusOf(ctx: ExtensionCommandContext, credentialId: string): { configured: boolean; source?: string; label?: string } {
+function authStatusOf(ctx: ExtensionCommandContext, credentialId: string): AccountAuthStatus {
   try {
-    return ctx.modelRegistry.getProviderAuthStatus(credentialId);
+    return ctx.modelRegistry.getProviderAuthStatus(credentialId) as AccountAuthStatus;
   } catch {
     return { configured: false };
   }
 }
 
-function formatAccountRow(ctx: ExtensionCommandContext, account: CodexAccount, activeId?: string): string {
-  const adapter = adapterFor(account);
+function statusLineOf(ctx: ExtensionCommandContext, account: CodexAccount): string {
+  const adapter = getProviderAdapter(account.provider);
   const status = authStatusOf(ctx, account.credentialId);
   const credential = readStoredCredential(account.credentialId, authFilePath());
-  const statusLine = adapter?.statusLine(status, credential) ?? (status.configured ? "authenticated" : "not authenticated");
+  return adapter?.statusLine(status, credential) ?? (status.configured ? "authenticated" : "not authenticated");
+}
+
+/** Resolve an account for a ref-less command, notifying when none exists. */
+function ensureAccount(cfg: AccountConfig, ctx: ExtensionCommandContext, ref: string | undefined): CodexAccount | undefined {
+  const account = pickAccount(cfg, ref);
+  if (!account) {
+    notify(ctx, "No Codex accounts yet. Add one with: /codex account add <label>", "warning");
+  }
+  return account;
+}
+
+function formatAccountRow(ctx: ExtensionCommandContext, account: CodexAccount, activeId?: string): string {
   const active = account.id === activeId || account.active ? "●" : " ";
-  return `${active} ${account.label}  [${account.credentialId}]  ${statusLine}`;
+  return `${active} ${account.label}  [${account.credentialId}]  ${statusLineOf(ctx, account)}`;
 }
 
 // ── Subcommands ──────────────────────────────────────────────────────────────
@@ -102,18 +112,12 @@ async function cmdAdd(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: stri
     notify(ctx, "Usage: /codex account add <label>", "error");
     return;
   }
-  const credentialId = nextCodexCredentialId(cfg.accounts.map((a) => a.credentialId));
-  const result = addAccount(cfg, {
-    provider: "openai-codex",
-    credentialId,
-    label,
-    active: cfg.accounts.length === 0 && !cfg.activeAccountId,
-  });
-  let next = result.cfg;
-  if (result.created && cfg.accounts.length === 0 && !cfg.activeAccountId) {
-    next = setActiveAccount(next, result.account.id);
-  }
-  saveGlobalAccountConfig(next);
+  // Avoid colliding with a credential already present in pi's auth store
+  // (e.g. created by a manual /login) even when it has no account entry.
+  const used = [...cfg.accounts.map((a) => a.credentialId), ...storedCredentialIds()];
+  const credentialId = nextCodexCredentialId(used);
+  const result = addAccount(cfg, { provider: "openai-codex", credentialId, label });
+  saveGlobalAccountConfig(result.cfg);
   if (result.created) {
     registerAccountProvider(ctx.modelRegistry, result.account);
     notify(ctx, `Added Codex account "${label}" as ${credentialId}. Authenticate with: /login ${credentialId}`);
@@ -124,11 +128,8 @@ async function cmdAdd(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: stri
 
 async function cmdLogin(ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
   const cfg = loadGlobalAccountConfig();
-  const account = accountOrError(cfg, ref);
-  if (!account) {
-    notify(ctx, "No Codex accounts yet. Add one with: /codex account add <label>", "warning");
-    return;
-  }
+  const account = ensureAccount(cfg, ctx, ref);
+  if (!account) return;
   if (!isCredentialAllowed(ctx.cwd, account.credentialId)) {
     notify(ctx, `Account ${account.credentialId} is restricted in this project`, "warning");
     return;
@@ -143,11 +144,8 @@ async function cmdLogin(ctx: ExtensionCommandContext, ref: string | undefined): 
 
 async function cmdLogout(ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
   const cfg = loadGlobalAccountConfig();
-  const account = accountOrError(cfg, ref);
-  if (!account) {
-    notify(ctx, "No Codex accounts yet. Add one with: /codex account add <label>", "warning");
-    return;
-  }
+  const account = ensureAccount(cfg, ctx, ref);
+  if (!account) return;
   const status = authStatusOf(ctx, account.credentialId);
   if (!status.configured) {
     notify(ctx, `Account "${account.label}" is not authenticated`);
@@ -158,7 +156,7 @@ async function cmdLogout(ctx: ExtensionCommandContext, ref: string | undefined):
 
 async function cmdRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
   const cfg = loadGlobalAccountConfig();
-  const account = accountOrError(cfg, ref);
+  const account = pickAccount(cfg, ref);
   if (!account) {
     notify(ctx, "No matching Codex account found", "error");
     return;
@@ -184,11 +182,8 @@ async function cmdRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: st
 
 async function cmdSwitch(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
   const cfg = loadGlobalAccountConfig();
-  const account = accountOrError(cfg, ref);
-  if (!account) {
-    notify(ctx, "No Codex accounts yet. Add one with: /codex account add <label>", "warning");
-    return;
-  }
+  const account = ensureAccount(cfg, ctx, ref);
+  if (!account) return;
   if (!isCredentialAllowed(ctx.cwd, account.credentialId)) {
     notify(ctx, `Account ${account.credentialId} is restricted in this project`, "warning");
     return;
@@ -231,32 +226,29 @@ async function cmdList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<
 
 async function cmdStatus(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string | undefined): Promise<void> {
   const cfg = loadGlobalAccountConfig();
-  const account = accountOrError(cfg, ref);
+  const account = pickAccount(cfg, ref);
   if (!account) {
     sendOutput(pi, ["No matching Codex account found."]);
     return;
   }
-  const adapter = adapterFor(account);
-  const status = authStatusOf(ctx, account.credentialId);
-  const credential = readStoredCredential(account.credentialId, authFilePath());
+  const adapter = getProviderAdapter(account.provider);
   const allowed = isCredentialAllowed(ctx.cwd, account.credentialId);
   const lines = [
     `Account: ${account.label}`,
     `  credential:  ${account.credentialId}`,
     `  provider:    ${adapter?.displayName ?? account.provider}`,
-    `  status:      ${adapter?.statusLine(status, credential) ?? (status.configured ? "authenticated" : "not authenticated")}`,
+    `  status:      ${statusLineOf(ctx, account)}`,
     `  project:     ${allowed ? "allowed" : "restricted in this project"}`,
     `  created:     ${account.createdAt.slice(0, 10)}`,
     ...(account.lastUsedAt ? [`  last used:   ${account.lastUsedAt.slice(0, 10)}`] : []),
     ...(account.legacy?.index !== undefined ? [`  legacy:      migrated from multi-pass (subscription #${account.legacy.index})`] : account.legacy ? ["  legacy:      migrated from multi-pass"] : []),
-    ...(status.configured ? [] : [`  next:        /login ${account.credentialId}`]),
+    ...(statusLineOf(ctx, account).startsWith("not authenticated") ? [`  next:        /login ${account.credentialId}`] : []),
   ];
   sendOutput(pi, lines);
 }
 
 async function cmdMigrate(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
-  const summary = runMigration(agentDirPath(), ctx.cwd, { trusted: ctx.isProjectTrusted() });
-  const lines = [
+  const summary = runMigration(agentDirPath(), ctx.cwd, { trusted: ctx.isProjectTrusted() });  const lines = [
     "Legacy multi-pass migration",
     `  global:  ${summary.global}`,
     `  project: ${summary.project}${summary.project === "skipped-untrusted" ? " (project not trusted)" : ""}`,

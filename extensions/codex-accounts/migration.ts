@@ -8,16 +8,25 @@
  * Safety contract:
  * - A backup copy is created before the legacy file is changed (renamed to
  *   `*.migrated` once migration succeeded).
- * - Reruns are idempotent: the `.migrated` marker file and/or the migration
- *   marker in the account config short-circuit.
- * - Malformed files and unknown/malformed entries are skipped with warnings;
- *   they never corrupt valid account configuration.
+ * - Reruns are idempotent: the `.migrated` marker file and/or a migration
+ *   marker short-circuit.
+ * - Malformed files are left untouched (no backup, no rename) so a fixed file
+ *   can migrate on a later run. Unknown/malformed entries are skipped with
+ *   warnings; they never corrupt valid account configuration.
  * - pi's auth.json credential store is never read-write-touched here.
  */
-const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const { join } = require("node:path");
-const { createHash } = require("node:crypto");
-import { copyFile, loadGlobalAccountConfig, loadProjectAccountConfig, renameFile, saveGlobalAccountConfig, saveProjectAccountConfig, addAccount, agentDirPath } from "./store.ts";
+import {
+  copyFile,
+  loadGlobalAccountConfig,
+  loadProjectAccountConfig,
+  renameFile,
+  saveGlobalAccountConfig,
+  saveProjectAccountConfig,
+  addAccount,
+  agentDirPath,
+} from "./store.ts";
 import { isSuffixedCodexId } from "./provider.ts";
 import type { AccountConfig, CodexAccount } from "./types.ts";
 
@@ -39,81 +48,88 @@ interface LegacyConfig {
   allowedSubs?: unknown;
 }
 
-function readLegacyJson(path: string): { content: string; parsed: LegacyConfig | null } {
+type LegacyOpen =
+  | { kind: "none" }
+  | { kind: "already" }
+  | { kind: "malformed" }
+  | { kind: "failed" }
+  | { kind: "ready"; parsed: LegacyConfig };
+
+const OPEN_STATUS: Record<Exclude<LegacyOpen["kind"], "ready">, "none" | "already" | "skipped-malformed" | "failed"> = {
+  none: "none",
+  already: "already",
+  malformed: "skipped-malformed",
+  failed: "failed",
+};
+
+function emptySummary(): MigrationSummary {
+  return { global: "none", project: "none", accountsCreated: 0, warnings: [] };
+}
+
+function readLegacyJson(path: string): { parsed: LegacyConfig | null } {
   try {
-    if (!existsSync(path)) return { content: "", parsed: null };
-    const content = readFileSync(path, "utf-8");
-    const parsed = JSON.parse(content);
+    if (!existsSync(path)) return { parsed: null };
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
     return {
-      content,
       parsed:
         parsed && typeof parsed === "object" && !Array.isArray(parsed)
           ? (parsed as LegacyConfig)
           : null,
     };
   } catch {
-    return { content: "", parsed: null };
+    return { parsed: null };
   }
-}
-
-function sourceHash(content: string): string {
-  return createHash("sha256").update(content).digest("hex").slice(0, 16);
-}
-
-function backupPath(path: string): string {
-  return `${path}.bak-${Date.now()}`;
-}
-
-export interface MigrateOptions {
-  /** Override "now" for deterministic tests. */
-  now?: number;
 }
 
 /**
- * Migrate the global legacy file into the account config. Returns a summary;
- * never throws for malformed input.
+ * Shared legacy-file handling: idempotency checks, tolerant parse, backup.
+ * Malformed files are NOT consumed — they stay in place so a later fix can
+ * migrate. Returns "none" (no file), "already" (consumed or marked before),
+ * "malformed" (unparseable, untouched), "failed" (backup error), or "ready"
+ * with a fresh backup in place.
  */
-export function migrateGlobalLegacy(agentDir: string, opts: MigrateOptions = {}): MigrationSummary {
-  const summary: MigrationSummary = { global: "none", project: "none", accountsCreated: 0, warnings: [] };
+function openLegacy(
+  path: string,
+  migratedPath: string,
+  markerPresent: boolean,
+  warnings: string[],
+): LegacyOpen {
+  if (!existsSync(path)) return { kind: "none" };
+  if (existsSync(migratedPath)) return { kind: "already" };
+  if (markerPresent) {
+    // Marker set but the file still exists (e.g. restored from backup):
+    // consume it without re-migrating.
+    renameFile(path, migratedPath);
+    return { kind: "already" };
+  }
+  const { parsed } = readLegacyJson(path);
+  if (!parsed) {
+    warnings.push(`legacy ${path} is not valid JSON; left unchanged`);
+    return { kind: "malformed" };
+  }
+  const backupPath = `${path}.bak-${Date.now()}`;
+  if (!copyFile(path, backupPath)) {
+    warnings.push(`could not create backup at ${backupPath}`);
+    return { kind: "failed" };
+  }
+  return { kind: "ready", parsed };
+}
+
+/** Migrate the global legacy file into the account config. Never throws. */
+export function migrateGlobalLegacy(agentDir: string): MigrationSummary {
+  const summary = emptySummary();
   const legacyPath = join(agentDir, "multi-pass.json");
   const migratedPath = `${legacyPath}.migrated`;
   const settingsPath = join(agentDir, "beautiful-pi.json");
-
-  if (!existsSync(legacyPath)) return summary;
-
   const cfg = loadGlobalAccountConfig(settingsPath);
 
-  // Already renamed by a previous run — nothing to do.
-  if (existsSync(migratedPath)) {
-    summary.global = "already";
+  const opened = openLegacy(legacyPath, migratedPath, !!cfg.migration?.globalMigratedAt, summary.warnings);
+  if (opened.kind !== "ready") {
+    summary.global = OPEN_STATUS[opened.kind];
     return summary;
   }
 
-  // Backup before changing the legacy file.
-  const backup = backupPath(legacyPath);
-  if (!copyFile(legacyPath, backup)) {
-    summary.global = "failed";
-    summary.warnings.push(`could not create backup at ${backup}`);
-    return summary;
-  }
-
-  const { content, parsed } = readLegacyJson(legacyPath);
-
-  // Marker exists but the rename did not land (e.g. user restored the file).
-  if (cfg.migration?.globalMigratedAt) {
-    renameFile(legacyPath, migratedPath);
-    summary.global = "already";
-    return summary;
-  }
-
-  if (!parsed) {
-    renameFile(legacyPath, migratedPath);
-    summary.global = "skipped-malformed";
-    summary.warnings.push(`legacy ${legacyPath} was not valid JSON; left as-is in ${migratedPath}`);
-    return summary;
-  }
-
-  const subscriptions = Array.isArray(parsed.subscriptions) ? parsed.subscriptions : [];
+  const subscriptions = Array.isArray(opened.parsed.subscriptions) ? opened.parsed.subscriptions : [];
   let nextCfg: AccountConfig = cfg;
   let created = 0;
 
@@ -143,12 +159,7 @@ export function migrateGlobalLegacy(agentDir: string, opts: MigrateOptions = {})
       ...(typeof sub.index === "number" ? { index: sub.index } : {}),
       source: "multi-pass",
     };
-    const result = addAccount(nextCfg, {
-      provider: "openai-codex",
-      credentialId,
-      label,
-      active: !nextCfg.activeAccountId && nextCfg.accounts.length === 0,
-    });
+    const result = addAccount(nextCfg, { provider: "openai-codex", credentialId, label });
     if (result.created) {
       nextCfg = {
         ...result.cfg,
@@ -162,16 +173,8 @@ export function migrateGlobalLegacy(agentDir: string, opts: MigrateOptions = {})
 
   nextCfg = {
     ...nextCfg,
-    migration: {
-      ...nextCfg.migration,
-      globalMigratedAt: new Date(opts.now ?? Date.now()).toISOString(),
-      globalSourceHash: sourceHash(content),
-    },
+    migration: { globalMigratedAt: new Date().toISOString() },
   };
-  if (!nextCfg.activeAccountId && nextCfg.accounts.length > 0) {
-    const first = nextCfg.accounts.find((a) => a.active) ?? nextCfg.accounts[0];
-    nextCfg = { ...nextCfg, activeAccountId: first.id };
-  }
   saveGlobalAccountConfig(nextCfg, settingsPath);
 
   // Mark the legacy file as consumed so pi-multi-pass cannot double-apply.
@@ -183,34 +186,19 @@ export function migrateGlobalLegacy(agentDir: string, opts: MigrateOptions = {})
 }
 
 /** Migrate a project-level legacy file into `.pi/beautiful-pi.json`. */
-export function migrateProjectLegacy(cwd: string, opts: MigrateOptions = {}): MigrationSummary {
-  const summary: MigrationSummary = { global: "none", project: "none", accountsCreated: 0, warnings: [] };
+export function migrateProjectLegacy(cwd: string): MigrationSummary {
+  const summary = emptySummary();
   const legacyPath = join(cwd, ".pi", "multi-pass.json");
   const migratedPath = `${legacyPath}.migrated`;
+  const existing = loadProjectAccountConfig(cwd);
 
-  if (!existsSync(legacyPath)) return summary;
-
-  if (existsSync(migratedPath)) {
-    summary.project = "already";
+  const opened = openLegacy(legacyPath, migratedPath, !!existing?.migratedFromLegacyAt, summary.warnings);
+  if (opened.kind !== "ready") {
+    summary.project = OPEN_STATUS[opened.kind];
     return summary;
   }
 
-  const backup = backupPath(legacyPath);
-  if (!copyFile(legacyPath, backup)) {
-    summary.project = "failed";
-    summary.warnings.push(`could not create backup at ${backup}`);
-    return summary;
-  }
-
-  const { parsed } = readLegacyJson(legacyPath);
-  if (!parsed) {
-    renameFile(legacyPath, migratedPath);
-    summary.project = "skipped-malformed";
-    summary.warnings.push(`legacy ${legacyPath} was not valid JSON; left as-is in ${migratedPath}`);
-    return summary;
-  }
-
-  const allowedSubs = Array.isArray(parsed.allowedSubs) ? parsed.allowedSubs : [];
+  const allowedSubs = Array.isArray(opened.parsed.allowedSubs) ? opened.parsed.allowedSubs : [];
   const valid: string[] = [];
   for (const raw of allowedSubs) {
     if (typeof raw !== "string" || !raw) {
@@ -224,28 +212,16 @@ export function migrateProjectLegacy(cwd: string, opts: MigrateOptions = {}): Mi
     valid.push(raw);
   }
 
-  if (valid.length > 0) {
-    const existing = loadProjectAccountConfig(cwd);
-    const merged = [...new Set([...(existing?.allowedCredentialIds ?? []), ...valid])];
-    saveProjectAccountConfig(cwd, { allowedCredentialIds: merged });
-    summary.project = "migrated";
-  } else {
-    summary.project = "skipped-malformed";
-    summary.warnings.push("legacy project config had no valid Codex allowedSubs; nothing migrated");
-  }
+  const merged = [...new Set([...(existing?.allowedCredentialIds ?? []), ...valid])];
+  const migratedAt = new Date().toISOString();
+  saveProjectAccountConfig(cwd, {
+    ...(merged.length > 0 ? { allowedCredentialIds: merged } : {}),
+    migratedFromLegacyAt: migratedAt,
+  });
 
   renameFile(legacyPath, migratedPath);
 
-  // Record project migration time in the global account config.
-  const cfg = loadGlobalAccountConfig();
-  const now = new Date(opts.now ?? Date.now()).toISOString();
-  if (cfg.migration?.projectMigratedAt !== now) {
-    saveGlobalAccountConfig({
-      ...cfg,
-      migration: { ...cfg.migration, projectMigratedAt: now },
-    }, join(agentDirPath(), "beautiful-pi.json"));
-  }
-
+  summary.project = valid.length > 0 ? "migrated" : "skipped-malformed";
   return summary;
 }
 
@@ -265,8 +241,4 @@ export function runMigration(
     accountsCreated: global.accountsCreated,
     warnings: [...global.warnings, ...project.warnings],
   };
-}
-
-function emptySummary(): MigrationSummary {
-  return { global: "none", project: "none", accountsCreated: 0, warnings: [] };
 }

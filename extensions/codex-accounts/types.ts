@@ -27,11 +27,9 @@ export interface CodexAccount {
   };
 }
 
+/** Global migration bookkeeping inside the account namespace. */
 export interface AccountMigrationState {
   globalMigratedAt?: string;
-  projectMigratedAt?: string;
-  globalSourceHash?: string;
-  projectSourceHash?: string;
 }
 
 /** Beautiful-pi account namespace (the `accounts` key of the settings file). */
@@ -42,10 +40,15 @@ export interface AccountConfig {
   migration?: AccountMigrationState;
 }
 
-/** Project-level account restriction (`.pi/beautiful-pi.json`). */
+/**
+ * Project-level account configuration (`.pi/beautiful-pi.json`).
+ * `migratedFromLegacyAt` is the per-project idempotency marker set when the
+ * project's legacy `.pi/multi-pass.json` was consumed.
+ */
 export interface ProjectAccountConfig {
   /** Credential ids allowed in this project; absent/undefined means allow all. */
   allowedCredentialIds?: string[];
+  migratedFromLegacyAt?: string;
 }
 
 /** Structural mirror of pi's AuthStatus (not exported by pi-coding-agent). */
@@ -74,5 +77,3 @@ export interface ProviderAccountAdapter {
   /** Short human status line for an account row. */
   statusLine(status: AccountAuthStatus | undefined, credential: Credential | undefined): string;
 }
-
-export type { Credential, Provider };

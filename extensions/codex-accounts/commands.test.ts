@@ -118,6 +118,19 @@ describe("/codex account add", () => {
       ["openai-codex-2", "openai-codex-3"],
     );
   });
+
+  test("avoids colliding with a credential already in auth.json", async () => {
+    // Simulate a credential created by a manual /login with no account entry.
+    writeFileSync(join(tmpHome, ".pi", "agent", "auth.json"), JSON.stringify({
+      "openai-codex": { type: "oauth" },
+      "openai-codex-2": { type: "oauth" },
+    }));
+    const env = makeEnv();
+    await env.handler("account add work");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.accounts[0].credentialId, "openai-codex-3", "skips id used by auth.json");
+    rmSync(join(tmpHome, ".pi", "agent", "auth.json"), { force: true });
+  });
 });
 
 describe("/codex account login/logout", () => {

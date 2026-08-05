@@ -4,12 +4,15 @@
  * Accounts live under the `accounts` key of beautiful-pi's settings file
  * (`~/.pi/agent/beautiful-pi.json`), sharing the file with UI settings.
  * Project-level restrictions live in `.pi/beautiful-pi.json` next to the
- * project. pi's auth.json credential store is never touched here.
+ * project. pi's auth.json credential store is never written here.
  */
 const { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, copyFileSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { randomUUID } = require("node:crypto");
 import type { AccountConfig, CodexAccount, ProjectAccountConfig } from "./types.ts";
+
+/** The settings-file key that holds the account namespace. */
+export const ACCOUNTS_SECTION = "accounts";
 
 // ── Paths (lazy so tests can override process.env.HOME after import) ─────────
 
@@ -113,12 +116,9 @@ function normalizeConfig(raw: Record<string, unknown> | null): AccountConfig {
   const migration = raw.migration;
   if (migration && typeof migration === "object") {
     const m = migration as Record<string, unknown>;
-    cfg.migration = {
-      ...(typeof m.globalMigratedAt === "string" ? { globalMigratedAt: m.globalMigratedAt } : {}),
-      ...(typeof m.projectMigratedAt === "string" ? { projectMigratedAt: m.projectMigratedAt } : {}),
-      ...(typeof m.globalSourceHash === "string" ? { globalSourceHash: m.globalSourceHash } : {}),
-      ...(typeof m.projectSourceHash === "string" ? { projectSourceHash: m.projectSourceHash } : {}),
-    };
+    if (typeof m.globalMigratedAt === "string") {
+      cfg.migration = { globalMigratedAt: m.globalMigratedAt };
+    }
   }
   return cfg;
 }
@@ -138,7 +138,7 @@ export function loadGlobalAccountConfig(filePath?: string): AccountConfig {
 export function saveGlobalAccountConfig(cfg: AccountConfig, filePath?: string): void {
   const path = filePath ?? globalSettingsPath();
   const existing = readJson(path) ?? {};
-  existing["accounts"] = cfg;
+  existing[ACCOUNTS_SECTION] = cfg;
   writeJson(path, existing);
 }
 
@@ -147,12 +147,19 @@ export function saveGlobalAccountConfig(cfg: AccountConfig, filePath?: string): 
 export function loadProjectAccountConfig(cwd: string): ProjectAccountConfig | null {
   const raw = readJson(projectSettingsPath(cwd));
   if (!raw) return null;
-  const accounts = raw["accounts"];
-  if (!accounts || typeof accounts !== "object") return null;
-  const allowed = (accounts as Record<string, unknown>).allowedCredentialIds;
-  if (!Array.isArray(allowed)) return null;
-  const ids = allowed.filter((v): v is string => typeof v === "string" && v.length > 0);
-  return ids.length > 0 ? { allowedCredentialIds: ids } : { allowedCredentialIds: [] };
+  const section = raw[ACCOUNTS_SECTION];
+  if (!section || typeof section !== "object" || Array.isArray(section)) return null;
+  const accounts = section as Record<string, unknown>;
+  const cfg: ProjectAccountConfig = {};
+  const allowed = accounts.allowedCredentialIds;
+  if (Array.isArray(allowed)) {
+    const ids = allowed.filter((v): v is string => typeof v === "string" && v.length > 0);
+    cfg.allowedCredentialIds = ids;
+  }
+  if (typeof accounts.migratedFromLegacyAt === "string") {
+    cfg.migratedFromLegacyAt = accounts.migratedFromLegacyAt;
+  }
+  return Object.keys(cfg).length > 0 ? cfg : null;
 }
 
 export function saveProjectAccountConfig(
@@ -161,7 +168,7 @@ export function saveProjectAccountConfig(
 ): void {
   const path = projectSettingsPath(cwd);
   const existing = readJson(path) ?? {};
-  existing["accounts"] = cfg;
+  existing[ACCOUNTS_SECTION] = cfg;
   writeJson(path, existing);
 }
 
@@ -172,19 +179,35 @@ export function isCredentialAllowed(cwd: string, credentialId: string): boolean 
   return project.allowedCredentialIds.includes(credentialId);
 }
 
+/** Provider ids currently stored in pi's auth.json (keys only, never values). */
+export function storedCredentialIds(): string[] {
+  try {
+    const raw = JSON.parse(readFileSync(authFilePath(), "utf-8"));
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return Object.keys(raw).filter((k) => k.length > 0);
+    }
+  } catch {
+    // missing or unreadable auth.json
+  }
+  return [];
+}
+
 // ── Pure account operations ──────────────────────────────────────────────────
 
 export interface AddAccountInput {
   provider: string;
   credentialId: string;
   label: string;
-  active?: boolean;
 }
 
+/**
+ * Add an account. The first account in an empty config is automatically made
+ * the active account. Idempotent: adding an existing credentialId only
+ * refreshes its label.
+ */
 export function addAccount(cfg: AccountConfig, input: AddAccountInput): { cfg: AccountConfig; account: CodexAccount; created: boolean } {
   const existing = cfg.accounts.find((a) => a.credentialId === input.credentialId);
   if (existing) {
-    // Idempotent add: update label only.
     const updated: AccountConfig = {
       ...cfg,
       accounts: cfg.accounts.map((a) =>
@@ -199,23 +222,34 @@ export function addAccount(cfg: AccountConfig, input: AddAccountInput): { cfg: A
     credentialId: input.credentialId,
     label: input.label || input.credentialId,
     createdAt: new Date().toISOString(),
-    ...(input.active ? { active: true } : {}),
   };
+  const isFirst = cfg.accounts.length === 0 && !cfg.activeAccountId;
+  const next: AccountConfig = {
+    ...cfg,
+    accounts: [...cfg.accounts, account],
+  };
+  const promoted = isFirst ? setActiveAccount(next, account.id) : next;
   return {
-    cfg: { ...cfg, accounts: [...cfg.accounts, account] },
-    account,
+    cfg: promoted,
+    account: promoted.accounts.find((a) => a.id === account.id) ?? account,
     created: true,
   };
 }
 
+/**
+ * Remove an account. When the active account is removed, the first remaining
+ * account is promoted to active.
+ */
 export function removeAccount(cfg: AccountConfig, id: string): AccountConfig {
   const removed = cfg.accounts.find((a) => a.id === id);
   if (!removed) return cfg;
-  return {
-    ...cfg,
-    accounts: cfg.accounts.filter((a) => a.id !== id),
-    ...(cfg.activeAccountId === id ? { activeAccountId: undefined } : {}),
-  };
+  const remaining = cfg.accounts.filter((a) => a.id !== id);
+  let next: AccountConfig = { ...cfg, accounts: remaining };
+  if (cfg.activeAccountId === id || removed.active) {
+    next = { ...next, activeAccountId: undefined, accounts: remaining.map((a) => ({ ...a, active: undefined })) };
+    if (remaining.length > 0) next = setActiveAccount(next, remaining[0].id);
+  }
+  return next;
 }
 
 export function setActiveAccount(cfg: AccountConfig, id: string): AccountConfig {

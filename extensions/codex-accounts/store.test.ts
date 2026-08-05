@@ -86,6 +86,22 @@ describe("account ops", () => {
     assert.equal(cfg.activeAccountId, undefined);
   });
 
+  test("removeAccount promotes a successor when the active account is removed", () => {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "a" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "b" }).cfg;
+    assert.equal(cfg.activeAccountId, cfg.accounts[0].id, "first account active");
+    cfg = removeAccount(cfg, cfg.accounts[0].id);
+    assert.equal(cfg.accounts.length, 1);
+    assert.equal(cfg.activeAccountId, cfg.accounts[0].id, "successor promoted");
+    assert.ok(cfg.accounts[0].active, "successor marked active");
+  });
+
+  test("addAccount auto-promotes the first account", () => {
+    const result = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex-2", label: "first" });
+    assert.equal(result.cfg.activeAccountId, result.account.id, "first account becomes active");
+    assert.ok(result.account.active);
+  });
+
   test("resolveAccount matches by id, credentialId, and label", () => {
     let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex-2", label: "Work Account" }).cfg;
     const account = cfg.accounts[0];
