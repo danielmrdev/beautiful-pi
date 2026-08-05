@@ -81,7 +81,9 @@ export class BorderlessTopEditor extends CustomEditor {
 		// ── Bottom border with clock / autocomplete separator ──
 		const plain = lines[bottomIdx]!.replace(ANSI_RE, "");
 		if (/─── ↓/.test(plain)) {
-			// Scroll separator ─── ↓ N more ─── becomes a box-internal divider
+			// Scroll separator ─── ↓ N more ─── becomes a box-internal divider.
+			// The divider body is innerW-wide (from super.render); wrap it in │
+			// so the ├/┤ junctions sit adjacent to the box frame's side borders.
 			const sepLine = lines[bottomIdx]!;
 			const pre = leadingAnsi(sepLine);
 			const body = sepLine.slice(pre.length);
@@ -90,7 +92,7 @@ export class BorderlessTopEditor extends CustomEditor {
 			if (first !== -1 && last !== -1 && first !== last) {
 				let out = body.slice(0, first) + "├" + body.slice(first + 1);
 				out = out.slice(0, last) + "┤" + out.slice(last + 1);
-				contentLines.push(trunc(`${pre}${out}`, width));
+				contentLines.push(trunc(`${pre}${wrap("│")}${out}${wrap("│")}`, width));
 			} else {
 				contentLines.push(trunc(sepLine, width));
 			}

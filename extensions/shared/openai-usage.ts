@@ -174,6 +174,19 @@ export interface UsageSegment {
 	overBudget: boolean;
 }
 
+/**
+ * True when actual usage exceeds the *expected* usage for this moment: the
+ * share of the cap a perfectly linear spend would have consumed by now.
+ * Shared by the OpenAI and OpenCodeGo segment builders.
+ */
+export function isOverBudgetLinear(
+	usedPercent: number,
+	elapsedSeconds: number,
+	windowSeconds: number,
+): boolean {
+	return elapsedSeconds > 0 && usedPercent > (elapsedSeconds / windowSeconds) * 100;
+}
+
 /** Seconds elapsed inside the window at `now`, or undefined when unknowable. */
 function windowElapsed(window: UsageWindow, now: number, driftMs: number): number | undefined {
 	if (window.resetAt !== undefined) {
@@ -192,8 +205,7 @@ function windowElapsed(window: UsageWindow, now: number, driftMs: number): numbe
 function overBudget(window: UsageWindow, now: number, driftMs: number): boolean {
 	const elapsed = windowElapsed(window, now, driftMs);
 	if (elapsed === undefined || elapsed <= 0) return false;
-	const expectedPercent = (elapsed / window.windowSeconds) * 100;
-	return window.usedPercent > expectedPercent;
+	return isOverBudgetLinear(window.usedPercent, elapsed, window.windowSeconds);
 }
 
 /**

@@ -26,6 +26,7 @@ import {
 	fetchOpenAIUsage,
 	openAIUsageSegments,
 	type OpenAIUsage,
+	type UsageSegment,
 } from "../shared/openai-usage.ts";
 import {
 	fetchOpenCodeGoUsage,
@@ -165,6 +166,13 @@ function formatCwd(
 }
 
 // ── Git formatting ────────────────────────────────────────────────────────────
+
+/** Render usage segments: over-budget segments flagged, joined with a muted separator. */
+function renderUsageSegments(segments: UsageSegment[], theme: any): string {
+	return segments
+		.map((s) => (s.overBudget ? theme.fg("warning", s.text) : theme.fg("muted", s.text)))
+		.join(theme.fg("muted", " | "));
+}
 
 function formatGit(
 	state: GitState,
@@ -438,7 +446,10 @@ export default function (pi: ExtensionAPI) {
 						openAIUsageAt = next ? Date.now() : 0;
 					}
 				} catch {
-					if (generation === usageGeneration) openAIUsage = null;
+					if (generation === usageGeneration) {
+						openAIUsage = null;
+						openAIUsageAt = 0;
+					}
 				} finally {
 					usageLoading = false;
 					tui.requestRender();
@@ -485,7 +496,10 @@ export default function (pi: ExtensionAPI) {
 						openCodeGoUsageAt = next ? Date.now() : 0;
 					}
 				} catch {
-					if (generation === ocgGeneration) openCodeGoUsage = null;
+					if (generation === ocgGeneration) {
+						openCodeGoUsage = null;
+						openCodeGoUsageAt = 0;
+					}
 				} finally {
 					ocgLoading = false;
 					tui.requestRender();
@@ -538,17 +552,9 @@ export default function (pi: ExtensionAPI) {
 					const icons = getIcons();
 					let usageLabel = "";
 					if (openAIUsage) {
-						usageLabel = openAIUsageSegments(openAIUsage, openAIUsageAt)
-							.map((s) => s.overBudget
-								? theme.fg("warning", s.text)
-								: theme.fg("muted", s.text))
-							.join(theme.fg("muted", " | "));
+						usageLabel = renderUsageSegments(openAIUsageSegments(openAIUsage, openAIUsageAt), theme);
 					} else if (openCodeGoUsage) {
-						usageLabel = openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageAt)
-							.map((s) => s.overBudget
-								? theme.fg("warning", s.text)
-								: theme.fg("muted", s.text))
-							.join(theme.fg("muted", " | "));
+						usageLabel = renderUsageSegments(openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageAt), theme);
 					}
 					const usage = usageLabel
 						? theme.fg("accent", icons.quota) + " " + usageLabel
