@@ -24,12 +24,12 @@ import { BorderlessTopEditor } from "./borderless-top-editor.ts";
 import { loadSettings } from "../shared/settings.ts";
 import {
 	fetchOpenAIUsage,
-	formatOpenAIUsage,
+	openAIUsageSegments,
 	type OpenAIUsage,
 } from "../shared/openai-usage.ts";
 import {
 	fetchOpenCodeGoUsage,
-	formatOpenCodeGoUsage,
+	openCodeGoUsageSegments,
 	type OpenCodeGoUsage,
 } from "./opencode-go-usage.ts";
 
@@ -351,7 +351,7 @@ export default function (pi: ExtensionAPI) {
 							: theme.fg("muted", `${contextPercent}%`);
 					const ctxFull = contextWindow > 0 ? `/${fmt(contextWindow)}` : "";
 
-										// Session title (truncated with … based on remaining space)
+					// Session title: on line 1 when it fits, else its own line (narrow)
 					let sessionTitle = "";
 					try { sessionTitle = pi.getSessionName()?.trim() ?? ""; } catch {}
 					
@@ -362,36 +362,44 @@ export default function (pi: ExtensionAPI) {
 						: "  ";
 					const ctxBar = `${bar} ${ctxStr}${theme.fg("muted", ctxFull)}`;
 					const prefixStr = ` ${piPart}  ${modelId}${thinkPart}${ctxBar}`;
-					const prefixW = strWidth(prefixStr);
-					const remainW = Math.max(0, width - prefixW - 2); // -2 for "  "
-					let titlePart = "";
-					if (sessionTitle && remainW > 4) {
-						const t = sessionTitle;
-						if (strWidth(t) > remainW - 1) {
-							// Truncate with …
-							const avail = remainW - 1;
+					const widgetLines: string[] = [];
+
+					// Narrow mode: title moves to its own line when it would not
+					// fit next to the model/context prefix.
+					const fitsOnLine1 = sessionTitle &&
+						strWidth(prefixStr) + 2 + strWidth(sessionTitle) <= width;
+					if (sessionTitle && fitsOnLine1) {
+						widgetLines.push(
+							truncateToWidth(prefixStr + "  " + theme.fg("muted", sessionTitle), width),
+						);
+					} else {
+						widgetLines.push(truncateToWidth(prefixStr, width));
+						if (sessionTitle) {
+							// Title on its own line, truncated with … if still too long
+							const avail = Math.max(0, width - 3); // "  " + …
 							let cut = "";
-							for (const ch of t) {
+							for (const ch of sessionTitle) {
 								if (strWidth(cut + ch) > avail) break;
 								cut += ch;
 							}
-							titlePart = "  " + theme.fg("muted", cut + "\u2026");
-						} else {
-							titlePart = "  " + theme.fg("muted", t);
+							const shown = strWidth(sessionTitle) > avail
+								? cut + "\u2026"
+								: sessionTitle;
+							widgetLines.push(truncateToWidth("  " + theme.fg("muted", shown), width));
 						}
 					}
-					const content = prefixStr + titlePart;
-					const line1 = truncateToWidth(content, width);
 
 
-					// ── Line 2: ┌─┐ box top ────────────────────────────────────────
+					// ── Last line: ┌─┐ box top ───────────────────────────────────
 					const border = (s: string) =>
 						editorRef?.borderColor(s) ?? theme.fg("borderMuted", s);
-					const line2 = truncateToWidth(
-						`${border("┌")}${border("─".repeat(width - 2))}${border("┐")}`,
-						width,
+					widgetLines.push(
+						truncateToWidth(
+							`${border("┌")}${border("─".repeat(width - 2))}${border("┐")}`,
+							width,
+						),
 					);
-					return [line1, line2];
+					return widgetLines;
 				},
 			};
 		},
@@ -402,11 +410,13 @@ export default function (pi: ExtensionAPI) {
 
 		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
 			let openAIUsage: OpenAIUsage | null = null;
+			let openAIUsageAt = 0;
 			let usageLoading = false;
 			let usageLastAttempt = 0;
 			let usageGeneration = 0;
 			let usageWasVisible = false;
 			let openCodeGoUsage: OpenCodeGoUsage | null = null;
+			let openCodeGoUsageAt = 0;
 			let ocgLoading = false;
 			let ocgLastAttempt = 0;
 			let ocgGeneration = 0;
@@ -423,7 +433,10 @@ export default function (pi: ExtensionAPI) {
 					const next = auth.ok && auth.apiKey
 						? await fetchOpenAIUsage(auth.apiKey, auth.headers)
 						: null;
-					if (generation === usageGeneration) openAIUsage = next;
+					if (generation === usageGeneration) {
+						openAIUsage = next;
+						openAIUsageAt = next ? Date.now() : 0;
+					}
 				} catch {
 					if (generation === usageGeneration) openAIUsage = null;
 				} finally {
@@ -438,6 +451,7 @@ export default function (pi: ExtensionAPI) {
 					if (usageWasVisible) {
 						usageGeneration++;
 						openAIUsage = null;
+						openAIUsageAt = 0;
 						usageLastAttempt = 0;
 						usageWasVisible = false;
 					}
@@ -459,11 +473,17 @@ export default function (pi: ExtensionAPI) {
 					const wsId = settings.opencodeGoWorkspaceId;
 					const cookie = settings.opencodeGoAuthCookie;
 					if (!wsId || !cookie) {
-						if (generation === ocgGeneration) openCodeGoUsage = null;
+						if (generation === ocgGeneration) {
+							openCodeGoUsage = null;
+							openCodeGoUsageAt = 0;
+						}
 						return;
 					}
 					const next = await fetchOpenCodeGoUsage(wsId, cookie);
-					if (generation === ocgGeneration) openCodeGoUsage = next;
+					if (generation === ocgGeneration) {
+						openCodeGoUsage = next;
+						openCodeGoUsageAt = next ? Date.now() : 0;
+					}
 				} catch {
 					if (generation === ocgGeneration) openCodeGoUsage = null;
 				} finally {
@@ -478,6 +498,7 @@ export default function (pi: ExtensionAPI) {
 					if (ocgWasVisible) {
 						ocgGeneration++;
 						openCodeGoUsage = null;
+						openCodeGoUsageAt = 0;
 						ocgLastAttempt = 0;
 						ocgWasVisible = false;
 					}
@@ -514,31 +535,51 @@ export default function (pi: ExtensionAPI) {
 				invalidate() {},
 				render(width: number): string[] {
 					const usableW = width - 2;
-					const CWD_MAX = Math.floor(usableW * 0.55);
-
-					const cwd = formatCwd(ctx.cwd, CWD_MAX, theme);
-					const left = !gitState
-						? cwd.text
-						: cwd.text + "  " + formatGit(gitState, theme).text;
 					const icons = getIcons();
 					let usageLabel = "";
 					if (openAIUsage) {
-						usageLabel = formatOpenAIUsage(openAIUsage);
+						usageLabel = openAIUsageSegments(openAIUsage, openAIUsageAt)
+							.map((s) => s.overBudget
+								? theme.fg("warning", s.text)
+								: theme.fg("muted", s.text))
+							.join(theme.fg("muted", " | "));
 					} else if (openCodeGoUsage) {
-						usageLabel = formatOpenCodeGoUsage(openCodeGoUsage);
+						usageLabel = openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageAt)
+							.map((s) => s.overBudget
+								? theme.fg("warning", s.text)
+								: theme.fg("muted", s.text))
+							.join(theme.fg("muted", " | "));
 					}
 					const usage = usageLabel
-						? theme.fg("accent", icons.quota) + " " + theme.fg("muted", usageLabel)
+						? theme.fg("accent", icons.quota) + " " + usageLabel
 						: "";
+					const usageW = strWidth(usage);
+					const git = gitState ? formatGit(gitState, theme) : null;
+					const gitPartW = git ? git.width + 2 : 0;
 
-					if (!usage || strWidth(usage) + 2 >= usableW) {
+					// Single line: cwd (at its usual cap) + git + usage
+					const CWD_MAX = Math.floor(usableW * 0.55);
+					const cwd = formatCwd(ctx.cwd, CWD_MAX, theme);
+					const left = !git ? cwd.text : cwd.text + "  " + git.text;
+					const leftW = strWidth(left);
+
+					if (!usage) {
 						return [bgLine(theme, left, width)];
 					}
+					if (leftW + 1 + usageW <= usableW) {
+						const gap = Math.max(1, usableW - leftW - usageW);
+						return [bgLine(theme, left + " ".repeat(gap) + usage, width)];
+					}
 
-					const leftMax = Math.max(0, usableW - strWidth(usage) - 2);
-					const leftVisible = truncateToWidth(left, leftMax);
-					const gap = Math.max(1, usableW - strWidth(leftVisible) - strWidth(usage));
-					return [bgLine(theme, leftVisible + " ".repeat(gap) + usage, width)];
+					// Narrow: two lines — cwd+git, then usage. cwd shrinks so git
+					// always stays fully visible.
+					const cwdMax2 = Math.max(0, usableW - gitPartW - 1);
+					const cwd2 = formatCwd(ctx.cwd, cwdMax2, theme);
+					const left2 = !git ? cwd2.text : cwd2.text + "  " + git.text;
+					return [
+						bgLine(theme, left2, width),
+						bgLine(theme, usage, width),
+					];
 				},
 			};
 		});

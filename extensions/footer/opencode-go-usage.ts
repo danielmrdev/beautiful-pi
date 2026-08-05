@@ -146,19 +146,48 @@ function formatResetSeconds(seconds: number): string {
 	return `${total}s`;
 }
 
-export function formatOpenCodeGoUsage(usage: OpenCodeGoUsage, now = Date.now()): string {
-	const parts: string[] = [];
+const OCG_WINDOW_SECONDS: Record<keyof OpenCodeGoUsage, number> = {
+	rolling: 5 * 3600,
+	weekly: 7 * 24 * 3600,
+	monthly: 30 * 24 * 3600,
+};
 
-	function formatWindow(w: OpenCodeGoUsage[keyof OpenCodeGoUsage], elapsedMs: number): string {
-		const remaining = w.resetInSec - elapsedMs / 1000;
-		return `${Math.round(w.usagePercent)}% ${formatResetSeconds(remaining)}`;
+export interface OpenCodeGoSegment {
+	text: string;
+	overBudget: boolean;
+}
+
+/**
+ * One segment per tier. `fetchedAt` is when the usage data was fetched;
+ * remaining time drifts from it.
+ *
+ * Over-budget means actual usage exceeds the *expected* usage for this
+ * moment: the share of the cap a perfectly linear spend would have consumed
+ * by now.
+ */
+export function openCodeGoUsageSegments(
+	usage: OpenCodeGoUsage,
+	fetchedAt = Date.now(),
+): OpenCodeGoSegment[] {
+	const now = Date.now();
+	const driftMs = now - fetchedAt;
+	const parts: OpenCodeGoSegment[] = [];
+
+	for (const key of ["rolling", "weekly", "monthly"] as const) {
+		const w = usage[key];
+		const windowSeconds = OCG_WINDOW_SECONDS[key];
+		const remaining = Math.max(0, w.resetInSec - driftMs / 1000);
+		const elapsed = windowSeconds - remaining;
+		const expectedPercent = (elapsed / windowSeconds) * 100;
+		parts.push({
+			text: `${Math.round(w.usagePercent)}% ${formatResetSeconds(remaining)}`,
+			overBudget: elapsed > 0 && w.usagePercent > expectedPercent,
+		});
 	}
 
-	const elapsed = Date.now() - now;
+	return parts;
+}
 
-	parts.push(formatWindow(usage.rolling, elapsed));
-	parts.push(formatWindow(usage.weekly, elapsed));
-	parts.push(formatWindow(usage.monthly, elapsed));
-
-	return parts.join(" | ");
+export function formatOpenCodeGoUsage(usage: OpenCodeGoUsage, now = Date.now()): string {
+	return openCodeGoUsageSegments(usage, now).map((s) => s.text).join(" | ");
 }

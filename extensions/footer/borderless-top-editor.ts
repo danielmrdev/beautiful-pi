@@ -52,32 +52,48 @@ export class BorderlessTopEditor extends CustomEditor {
 		// Autocomplete lines (after separator)
 		const autoRaw = lines.slice(bottomIdx + 1);
 
-		// Build content lines with ❯ prefix
+		// Build content lines with ❯ prefix and box side borders
+		// Content is truncated to width-1 so the trailing │ sits at the right
+		// edge, aligned with the ┐/┘ of the box frame. │ is box-drawing so it
+		// connects with the ┌ ┐ └ ┘ ├ ┤ corners.
+		const contentW = Math.max(1, width - 1);
 		const contentLines: string[] = contentRaw.map((line, i) => {
 			const pre = leadingAnsi(line);
 			const body = line.slice(pre.length);
 			if (i === 0) {
-				return trunc(`${pre}${wrap(TRIANGLE)} ${body}`, width);
+				return trunc(`${pre}${wrap(TRIANGLE)} ${body}`, contentW) + wrap("│");
 			}
-			return trunc(`${pre}  ${body}`, width);
+			return trunc(`${pre}${wrap("│")} ${body}`, contentW) + wrap("│");
 		});
 
 		// Spacer before autocomplete (Archimedes pattern)
 		if (autoRaw.length > 0) {
-			contentLines.push("");
+			contentLines.push(wrap("│") + " ".repeat(Math.max(0, width - 2)) + wrap("│"));
 		}
 
-		// Autocomplete lines indented by 2
+		// Autocomplete lines: boxed with side borders
 		for (const line of autoRaw) {
 			const pre = leadingAnsi(line);
 			const body = line.slice(pre.length);
-			contentLines.push(trunc(`${pre}  ${body}`, width));
+			contentLines.push(trunc(`${pre}${wrap("│")} ${body}`, contentW) + wrap("│"));
 		}
 
-		// ── Bottom border with clock ──
+		// ── Bottom border with clock / autocomplete separator ──
 		const plain = lines[bottomIdx]!.replace(ANSI_RE, "");
 		if (/─── ↓/.test(plain)) {
-			contentLines.push(trunc(lines[bottomIdx]!, width));
+			// Scroll separator ─── ↓ N more ─── becomes a box-internal divider
+			const sepLine = lines[bottomIdx]!;
+			const pre = leadingAnsi(sepLine);
+			const body = sepLine.slice(pre.length);
+			const first = body.indexOf("─");
+			const last = body.lastIndexOf("─");
+			if (first !== -1 && last !== -1 && first !== last) {
+				let out = body.slice(0, first) + "├" + body.slice(first + 1);
+				out = out.slice(0, last) + "┤" + out.slice(last + 1);
+				contentLines.push(trunc(`${pre}${out}`, width));
+			} else {
+				contentLines.push(trunc(sepLine, width));
+			}
 		} else {
 			const ss = (globalThis as any)[Symbol.for("beautiful-pi:wgtSessionStart")];
 			let timeStr = "";

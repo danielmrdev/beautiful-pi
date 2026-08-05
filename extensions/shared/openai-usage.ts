@@ -169,13 +169,59 @@ export function formatReset(window: UsageWindow, now = Date.now()): string {
 	return `${total}s`;
 }
 
-export function formatOpenAIUsage(usage: OpenAIUsage, now = Date.now()): string {
-	const parts: string[] = [];
+export interface UsageSegment {
+	text: string;
+	overBudget: boolean;
+}
+
+/** Seconds elapsed inside the window at `now`, or undefined when unknowable. */
+function windowElapsed(window: UsageWindow, now: number, driftMs: number): number | undefined {
+	if (window.resetAt !== undefined) {
+		return now / 1000 - (window.resetAt - window.windowSeconds);
+	}
+	if (window.resetAfterSeconds !== undefined) {
+		return window.windowSeconds - window.resetAfterSeconds + driftMs / 1000;
+	}
+	return undefined;
+}
+
+/**
+ * True when actual usage exceeds the *expected* usage for this moment: the
+ * share of the cap a perfectly linear spend would have consumed by now.
+ */
+function overBudget(window: UsageWindow, now: number, driftMs: number): boolean {
+	const elapsed = windowElapsed(window, now, driftMs);
+	if (elapsed === undefined || elapsed <= 0) return false;
+	const expectedPercent = (elapsed / window.windowSeconds) * 100;
+	return window.usedPercent > expectedPercent;
+}
+
+/**
+ * One segment per usage window. `fetchedAt` is when the usage data was
+ * fetched; time-based windows (resetAfterSeconds) drift from it.
+ */
+export function openAIUsageSegments(
+	usage: OpenAIUsage,
+	fetchedAt = Date.now(),
+): UsageSegment[] {
+	const now = Date.now();
+	const driftMs = now - fetchedAt;
+	const parts: UsageSegment[] = [];
 	if (usage.fiveHour) {
-		parts.push(`${Math.round(usage.fiveHour.usedPercent)}% ${formatReset(usage.fiveHour, now)}`);
+		parts.push({
+			text: `${Math.round(usage.fiveHour.usedPercent)}% ${formatReset(usage.fiveHour, now)}`,
+			overBudget: overBudget(usage.fiveHour, now, driftMs),
+		});
 	}
 	if (usage.sevenDay) {
-		parts.push(`${Math.round(usage.sevenDay.usedPercent)}% ${formatReset(usage.sevenDay, now)}`);
+		parts.push({
+			text: `${Math.round(usage.sevenDay.usedPercent)}% ${formatReset(usage.sevenDay, now)}`,
+			overBudget: overBudget(usage.sevenDay, now, driftMs),
+		});
 	}
-	return parts.join(" | ");
+	return parts;
+}
+
+export function formatOpenAIUsage(usage: OpenAIUsage, now = Date.now()): string {
+	return openAIUsageSegments(usage, now).map((s) => s.text).join(" | ");
 }
