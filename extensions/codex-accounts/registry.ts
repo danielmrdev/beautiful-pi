@@ -4,7 +4,7 @@
  * Codex is the first adapter. Future providers (e.g. opencode-go) register
  * their own adapter and inherit the account command surface.
  */
-import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import type { Credential, Model, Provider } from "@earendil-works/pi-ai";
 import type { AccountAuthStatus, ProviderAccountAdapter } from "./types.ts";
 
@@ -39,7 +39,12 @@ const codexAdapter: ProviderAccountAdapter = {
   credentialType: "oauth",
   buildProvider(credentialId: string, label?: string): Provider | undefined {
     try {
-      const base = openaiCodexProvider();
+      // Pi's extension loader aliases the pi-ai root to the compat entrypoint
+      // and only whitelists specific subpaths (providers/all, compat, oauth);
+      // per-provider subpaths like providers/openai-codex are NOT aliased, so
+      // the base provider is looked up through the supported builtins entry.
+      const base = builtinProviders().find((p) => p.id === "openai-codex");
+      if (!base) return undefined;
       return {
         ...base,
         id: credentialId,
