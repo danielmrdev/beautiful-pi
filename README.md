@@ -188,13 +188,19 @@ Save this at `~/.pi/agent/pi-codex-compaction.json`; project-local
 Pi's `settings.json` still controls Pi's own threshold. Other providers use
 Pi's normal lifecycle.
 
-`pi-blackhole@0.4.3` is a temporary bundled upstream integration while
-provider-specific compaction coordination is resolved. Do not enable Blackhole
-auto-compaction for Codex sessions alongside native Codex compaction. For a
-Codex session, set Blackhole's `compaction` to `"off"` in
-`~/.pi/agent/pi-blackhole/pi-blackhole-config.json`; use Blackhole auto
-compaction on non-Codex sessions. The `/blackhole-memory` and
-`/blackhole-recall` commands remain available when Blackhole is loaded.
+`pi-blackhole` is pinned to a provider-aware fork while the capability lands
+upstream (issue #7). Compaction engine selection is coordinated automatically:
+Codex models use native Codex compaction (opaque checkpoints preserved), every
+other model uses Blackhole, exactly one engine acts per turn, and the selection
+is independent of extension registration order. On session start the
+coordinator appends `"skipForProviders": ["openai-codex"]` to
+`~/.pi/agent/pi-blackhole/pi-blackhole-config.json`, so Blackhole steps aside
+for Codex sessions (no compaction, no observational-memory consolidation). The
+fork adds the `skipForProviders` config (file or
+`PI_BLACKHOLE_SKIP_PROVIDERS` env var); once the focused upstream PR merges,
+switching back to the official release is a one-line dependency bump with no
+code changes. The `/blackhole-memory` and `/blackhole-recall` commands remain
+available when Blackhole is loaded.
 
 ### Configuration entry points
 

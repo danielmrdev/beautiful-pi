@@ -13,7 +13,7 @@ const expectedDependencies = {
   "@juicesharp/rpiv-ask-user-question": "2.4.0",
   "pi-rtk-optimizer": "0.9.0",
   "@juicesharp/rpiv-btw": "2.4.0",
-  "pi-blackhole": "0.4.3",
+  "pi-blackhole": "github:danielmrdev/pi-blackhole#4700d7b09c6e672d6c0c62301ae446cfa80ff0d0",
 };
 
 const expectedPublishFiles = [

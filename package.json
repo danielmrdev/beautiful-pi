@@ -1,14 +1,14 @@
 {
   "name": "beautiful-pi",
   "version": "0.1.0",
-  "description": "Beautiful UI extensions and themes for pi — footer, banner, themes, and Nerd Fonts support",
+  "description": "Beautiful UI extensions and themes for pi \u2014 footer, banner, themes, and Nerd Fonts support",
   "keywords": [
     "pi-package",
     "pi",
     "coding-agent",
     "terminal-ui"
   ],
-  "author": "Daniel Muñoz <github@danielmr.dev>",
+  "author": "Daniel Mu\u00f1oz <github@danielmr.dev>",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -44,7 +44,7 @@
     "@juicesharp/rpiv-ask-user-question": "2.4.0",
     "pi-rtk-optimizer": "0.9.0",
     "@juicesharp/rpiv-btw": "2.4.0",
-    "pi-blackhole": "0.4.3"
+    "pi-blackhole": "github:danielmrdev/pi-blackhole#4700d7b09c6e672d6c0c62301ae446cfa80ff0d0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.83.0",
