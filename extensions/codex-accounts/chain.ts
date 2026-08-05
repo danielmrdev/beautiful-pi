@@ -11,6 +11,7 @@
 import type { AccountConfig, ChainTarget, CodexChain, CodexPool } from "./types.ts";
 import {
   allEligibleMembers,
+  eligibilityReason,
   isCooldownActive,
   nextEligibleMember,
   type EligibleMember,
@@ -32,7 +33,11 @@ function poolById(cfg: AccountConfig, poolId: string): CodexPool | undefined {
   return (cfg.pools ?? []).find((p) => p.id === poolId);
 }
 
-/** Why a single credential cannot be used right now; undefined when usable. */
+/**
+ * Why a single credential cannot be used right now; undefined when usable.
+ * Non-cooldown reasons come from the shared eligibility predicate; cooldown
+ * is the chain layer's own addition (a cooling member is exhausted for now).
+ */
 export function memberUnavailableReason(
   credentialId: string,
   cfg: AccountConfig,
@@ -40,11 +45,9 @@ export function memberUnavailableReason(
   state: RotationState,
   now: number = Date.now(),
 ): string | undefined {
-  if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return "no account entry";
-  if (state.attempted.has(credentialId)) return "already attempted";
+  const reason = eligibilityReason(credentialId, cfg, ctx, state);
+  if (reason) return reason;
   if (isCooldownActive(state, credentialId, now)) return "cooling down";
-  if (!ctx.authConfigured(credentialId)) return "not authenticated";
-  if (!ctx.allowed(credentialId)) return "restricted in this project";
   return undefined;
 }
 

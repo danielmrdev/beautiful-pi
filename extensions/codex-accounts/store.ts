@@ -738,6 +738,8 @@ function sameTarget(a: ChainTarget, b: ChainTarget): boolean {
     : a.credentialId === (b as { credentialId: string }).credentialId;
 }
 
+export { sameTarget };
+
 function hasTarget(targets: ChainTarget[], target: ChainTarget): boolean {
   return targets.some((t) => sameTarget(t, target));
 }

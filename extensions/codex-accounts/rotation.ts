@@ -70,6 +70,25 @@ export interface EligibleMember {
 }
 
 /**
+ * The first reason a credential cannot be routed to right now, or undefined
+ * when it is eligible: missing account entry, already attempted for this
+ * request, unauthenticated, or project-restricted. Cooldown is deliberately
+ * excluded (callers fold it in where they need it).
+ */
+export function eligibilityReason(
+  credentialId: string,
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+): string | undefined {
+  if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return "no account entry";
+  if (state.attempted.has(credentialId)) return "already attempted";
+  if (!ctx.authConfigured(credentialId)) return "not authenticated";
+  if (!ctx.allowed(credentialId)) return "restricted in this project";
+  return undefined;
+}
+
+/**
  * Core member eligibility shared by the round-robin scan and the advanced
  * strategies: has an account entry, not attempted for this request, is
  * authenticated, and passes the project restriction. Cooldown and pool
@@ -82,11 +101,7 @@ export function isEligibleMember(
   ctx: RotationContext,
   state: RotationState,
 ): boolean {
-  if (state.attempted.has(credentialId)) return false;
-  if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return false;
-  if (!ctx.authConfigured(credentialId)) return false;
-  if (!ctx.allowed(credentialId)) return false;
-  return true;
+  return eligibilityReason(credentialId, cfg, ctx, state) === undefined;
 }
 
 /**

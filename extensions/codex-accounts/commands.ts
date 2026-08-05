@@ -76,6 +76,7 @@ import {
   loadProjectAccountConfig,
   saveProjectAccountConfig,
   resolveEffectiveConfig,
+  sameTarget,
 } from "./store.ts";
 import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, CodexPreset, PoolSchedule } from "./types.ts";
 
@@ -888,6 +889,24 @@ function loadEffective(ctx: ExtensionCommandContext): AccountConfig {
 }
 
 /**
+ * True when the pool's member list is unchanged by a project override, so a
+ * member index computed on it can be persisted to the global pool pointer.
+ * Overridden pools keep their pointer untouched (rotation restarts fresh per
+ * request — the attempted set still guards replays).
+ */
+function poolPointerPersists(global: AccountConfig, poolId: string, memberIds: string[]): boolean {
+  const pool = (global.pools ?? []).find((p) => p.id === poolId);
+  return !!pool && pool.credentialIds.join("\u0000") === memberIds.join("\u0000");
+}
+
+/** True when the chain's targets are unchanged by a project override. */
+function chainProgressPersists(global: AccountConfig, chainId: string, targets: ChainTarget[]): boolean {
+  const chain = (global.chains ?? []).find((c) => c.id === chainId);
+  if (!chain || chain.targets.length !== targets.length) return false;
+  return chain.targets.every((t, i) => sameTarget(t, targets[i]));
+}
+
+/**
  * Walk a chain with strategy-aware selection: pool targets pick through the
  * pool's own strategy (quota-first/scheduled/custom/round-robin), account
  * targets are used directly. Skipped targets never break the walk.
@@ -1069,10 +1088,14 @@ async function cmdChainUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: 
   }
   const withProgress: AccountConfig = {
     ...setActiveAccount(global, account.id),
-    chains: (global.chains ?? []).map((c) =>
-      c.id === chain.id ? { ...c, lastUsedTargetIndex: walk.targetIndex } : c
-    ),
-    pools: walk.pool
+    // Progress only persists when the pool/chain came from the global config;
+    // project overrides keep their own (unindexed) rotation.
+    chains: chainProgressPersists(global, chain.id, chain.targets)
+      ? (global.chains ?? []).map((c) =>
+          c.id === chain.id ? { ...c, lastUsedTargetIndex: walk.targetIndex } : c
+        )
+      : (global.chains ?? []),
+    pools: walk.pool && poolPointerPersists(global, walk.pool.id, walk.pool.credentialIds)
       ? (global.pools ?? []).map((p) =>
           p.id === walk.pool!.id ? { ...p, lastUsedIndex: walk.member.index } : p
         )
@@ -1197,7 +1220,9 @@ async function cmdPresetActivate(pi: ExtensionAPI, ctx: ExtensionCommandContext,
   }
   const withPointer: AccountConfig = {
     ...setActiveAccount(global, account.id),
-    pools: (global.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member!.index } : p)),
+    pools: poolPointerPersists(global, pool.id, pool.credentialIds)
+      ? (global.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member!.index } : p))
+      : (global.pools ?? []),
   };
   saveGlobalAccountConfig(withPointer);
   notify(ctx, `Preset "${preset.name}": active member is "${account.label}" (${member!.credentialId}, ${model.id})`);

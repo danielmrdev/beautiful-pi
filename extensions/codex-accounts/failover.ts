@@ -22,8 +22,8 @@ import {
 } from "./rotation.ts";
 import { nextChainMember, chainContainingCredential, chainPoolForCredential } from "./chain.ts";
 import { rotationContextFrom } from "./context.ts";
-import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig } from "./store.ts";
-import type { AccountConfig, CodexChain } from "./types.ts";
+import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig, sameTarget } from "./store.ts";
+import type { AccountConfig, ChainTarget } from "./types.ts";
 
 /** Structural slice of the extension context the failover needs. */
 export interface FailoverContext {
@@ -99,10 +99,14 @@ export type FailoverDecision =
       toIndex: number;
       /** Pool that produced the target member; absent for direct account targets. */
       poolId?: string;
+      /** Effective member list of the pool that produced the member. */
+      poolMembers?: string[];
       /** Chain the retry advanced through; absent for plain pool rotation. */
       chainId?: string;
       /** Chain target index that produced the member (replay progress). */
       toTargetIndex?: number;
+      /** Effective target list of the chain the retry advanced through. */
+      chainTargets?: ChainTarget[];
       userText: string;
     }
   | { kind: "none" };
@@ -145,6 +149,7 @@ export function decideFailover(
       poolName: pool.name,
       toIndex: member.index,
       poolId: pool.id,
+      poolMembers: pool.credentialIds,
       userText: run.lastUserText,
     };
   }
@@ -160,9 +165,10 @@ export function decideFailover(
     toCredentialId: walk.member.credentialId,
     poolName: walk.pool?.name ?? chain.name,
     toIndex: walk.member.index,
-    ...(walk.pool ? { poolId: walk.pool.id } : {}),
+    ...(walk.pool ? { poolId: walk.pool.id, poolMembers: walk.pool.credentialIds } : {}),
     chainId: chain.id,
     toTargetIndex: walk.targetIndex,
+    chainTargets: chain.targets,
     userText: run.lastUserText,
   };
 }
@@ -194,19 +200,35 @@ export async function actOnFailover(
     );
   }
   // Persist the advanced rotation pointer (best-effort; no-op without config).
+  // A pointer only persists when the pool/chain came from the global config —
+  // project overrides keep their own unindexed rotation.
   let pools = cfg.pools ?? [];
   if (decision.poolId) {
-    pools = pools.map((p) =>
-      p.id === decision.poolId ? { ...p, lastUsedIndex: decision.toIndex } : p
-    );
+    const global = pools.find((p) => p.id === decision.poolId);
+    const persist = decision.poolMembers !== undefined
+      ? !!global && global.credentialIds.join("\u0000") === decision.poolMembers.join("\u0000")
+      : true;
+    if (persist) {
+      pools = pools.map((p) =>
+        p.id === decision.poolId ? { ...p, lastUsedIndex: decision.toIndex } : p
+      );
+    }
   }
   let chains = cfg.chains ?? [];
   const toTarget = decision.chainId ? decision.toTargetIndex : undefined;
   if (decision.chainId && toTarget !== undefined) {
     const chainId = decision.chainId;
-    chains = chains.map((c) =>
-      c.id === chainId ? { ...c, lastUsedTargetIndex: toTarget } : c
-    );
+    const global = chains.find((c) => c.id === chainId);
+    const persist = decision.chainTargets !== undefined
+      ? !!global &&
+        global.targets.length === decision.chainTargets.length &&
+        global.targets.every((t, i) => sameTarget(t, decision.chainTargets![i]))
+      : true;
+    if (persist) {
+      chains = chains.map((c) =>
+        c.id === chainId ? { ...c, lastUsedTargetIndex: toTarget } : c
+      );
+    }
   }
   saveGlobalAccountConfig({ ...cfg, pools, chains });
   pi.sendUserMessage(decision.userText);

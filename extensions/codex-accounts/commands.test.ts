@@ -989,3 +989,26 @@ describe("/codex project override validation", () => {
     assert.ok(env.notifications.some((n) => n.msg.includes("No global chain named")));
   });
 });
+
+describe("/codex chain use with project overrides", () => {
+  test("does not persist pointers to a project-overridden pool", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    await env.handler("chain create primary prod");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+    // Project override restricts prod to personal only.
+    await env.handler("project pool prod personal");
+    await env.handler("chain use primary");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "override member used");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.pools![0].lastUsedIndex, -1, "override pool pointer not persisted to global");
+    assert.equal(cfg.chains![0].lastUsedTargetIndex, 0, "chain progress persists (chain not overridden)");
+  });
+});
