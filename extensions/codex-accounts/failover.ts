@@ -10,14 +10,14 @@
  * same request. Non-rate-limit errors are never touched.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadGlobalAccountConfig } from "./store.ts";
-import { notify } from "./commands.ts";
+import type { Model } from "@earendil-works/pi-ai";
+import { loadGlobalAccountConfig, saveGlobalAccountConfig } from "./store.ts";
+import { activateAccountModel } from "./provider.ts";
 import {
   markCooldown,
   nextEligibleMember,
   beginOrContinueRequest,
   getSharedRotationState,
-  resetSharedRotationState,
   type RotationContext,
   type RotationState,
 } from "./rotation.ts";
@@ -32,12 +32,15 @@ export interface FailoverContext {
     notify(message: string, type?: "info" | "warning" | "error"): void;
   };
   modelRegistry: {
-    getAll(): { provider: string }[];
+    getAll(): Model<any>[];
     getProviderAuthStatus(id: string): { configured: boolean } | undefined;
+    registerProvider(provider: unknown): void;
+    hasConfiguredAuth(model: Model<any>): boolean;
   };
 }
 
 // ── Error classification ─────────────────────────────────────────────────────
+
 const RATE_LIMIT_RE = /\b429\b|rate[\s-]?limit|quota|too many requests/i;
 
 export function isCodexRateLimitError(message: string): boolean {
@@ -90,6 +93,9 @@ export type FailoverDecision =
       fromCredentialId: string;
       toCredentialId: string;
       poolName: string;
+      /** Index of the target member in the pool — persisted as the pointer. */
+      toIndex: number;
+      poolId: string;
       userText: string;
     }
   | { kind: "none" };
@@ -106,7 +112,8 @@ export function decideFailover(
   ctx: RotationContext,
   state: RotationState,
   now: number = Date.now(),
-): FailoverDecision {  if (!run.lastError || !isCodexRateLimitError(run.lastError)) return { kind: "none" };
+): FailoverDecision {
+  if (!run.lastError || !isCodexRateLimitError(run.lastError)) return { kind: "none" };
   if (!run.lastProvider) return { kind: "none" };
   const pool = (cfg.pools ?? []).find(
     (p) => p.enabled && p.credentialIds.includes(run.lastProvider!),
@@ -122,6 +129,8 @@ export function decideFailover(
     fromCredentialId: run.lastProvider,
     toCredentialId: member.credentialId,
     poolName: pool.name,
+    toIndex: member.index,
+    poolId: pool.id,
     userText: run.lastUserText,
   };
 }
@@ -129,8 +138,9 @@ export function decideFailover(
 // ── Action ───────────────────────────────────────────────────────────────────
 
 /**
- * Apply a retry decision: switch the active model to the target account's
- * first model and re-send the interrupted user text.
+ * Apply a retry decision: switch the active model to the target account and
+ * re-send the interrupted user text. The pool's rotation pointer is advanced
+ * to the target member so `pool use` continues from here.
  */
 export async function actOnFailover(
   pi: ExtensionAPI,
@@ -138,46 +148,63 @@ export async function actOnFailover(
   decision: FailoverDecision,
 ): Promise<void> {
   if (decision.kind !== "retry") return;
-  const target = ctx.modelRegistry.getAll().find((m) => m.provider === decision.toCredentialId);
-  if (!target) return;
-  const switched = await pi.setModel(target as never);
+  const cfg = loadGlobalAccountConfig();
+  const account = cfg.accounts.find((a) => a.credentialId === decision.toCredentialId);
+  const switched = account
+    ? await activateAccountModel(pi, ctx.modelRegistry as never, account)
+    : undefined;
   if (!switched) return;
-  notify(
-    ctx,
-    `Codex rate limit on ${decision.fromCredentialId}; switched to ${decision.toCredentialId} (pool ${decision.poolName}), retrying`,
-    "warning",
-  );
+  if (ctx.hasUI) {
+    ctx.ui?.notify(
+      `Codex rate limit on ${decision.fromCredentialId}; switched to ${decision.toCredentialId} (pool ${decision.poolName}), retrying`,
+      "warning",
+    );
+  }
+  // Persist the advanced rotation pointer (best-effort; no-op without config).
+  saveGlobalAccountConfig({
+    ...cfg,
+    pools: (cfg.pools ?? []).map((p) =>
+      p.id === decision.poolId ? { ...p, lastUsedIndex: decision.toIndex } : p
+    ),
+  });
   pi.sendUserMessage(decision.userText);
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
 let lastRun: FailoverRunInfo | null = null;
+/** Key of the run already failover'd — guards against re-settled events. */
+let actedOn: string | null = null;
 
-/** Reset module state (tests, /reload). */
-export function resetFailoverState(): void {
-  lastRun = null;
-  resetSharedRotationState();
-}
-
-function rotationContextFor(ctx: FailoverContext): RotationContext {
-  return rotationContextFrom(ctx);
+function runKey(run: FailoverRunInfo): string {
+  return `${run.lastUserText}\u0000${run.lastProvider}\u0000${run.lastError}`;
 }
 
 /**
  * Register the failover event handlers: capture the run on `agent_end`, act on
  * `agent_settled` (only then is the run guaranteed settled — no automatic
- * retry/compaction pending).
+ * retry/compaction pending). A new `agent_end` resets the acted-on guard so a
+ * retry run's own failure can fail over again; a duplicated `agent_settled`
+ * for the same run is ignored.
  */
 export function wireFailover(pi: ExtensionAPI): void {
+  const key = Symbol.for("beautiful-pi:codex-failover-wired");
+  if ((globalThis as Record<symbol, unknown>)[key]) return;
+  (globalThis as Record<symbol, unknown>)[key] = true;
+
   pi.on("agent_end", (event, ctx) => {
     lastRun = extractRunInfo((event as { messages: unknown[] }).messages ?? []);
+    actedOn = null;
   });
   pi.on("agent_settled", (_event, ctx) => {
     const run = lastRun;
     if (!run || !run.lastError || !run.lastUserText) return;
+    if (runKey(run) === actedOn) return;
     const cfg = loadGlobalAccountConfig();
-    const decision = decideFailover(run, cfg, rotationContextFor(ctx), getSharedRotationState());
-    if (decision.kind === "retry") void actOnFailover(pi, ctx, decision);
+    const decision = decideFailover(run, cfg, rotationContextFrom(ctx), getSharedRotationState());
+    if (decision.kind === "retry") {
+      actedOn = runKey(run);
+      return actOnFailover(pi, ctx, decision);
+    }
   });
 }

@@ -255,20 +255,29 @@ describe("/codex account migrate + usage", () => {
 });
 
 describe("/codex pool", () => {
-  test("create builds a pool and warns about unauthenticated members", async () => {
+  /** Mark every current account as authenticated + provide models. */
+  function authenticateAll(env: FakeEnv): void {
+    const cfg = loadGlobalAccountConfig();
+    env.models = cfg.accounts.map((a) => ({ provider: a.credentialId, id: "gpt-5.5" }));
+    env.auth = Object.fromEntries(cfg.accounts.map((a) => [a.credentialId, { configured: true }]));
+  }
+
+  test("create rejects unauthenticated members and creates once authenticated", async () => {
     const env = makeEnv();
     await env.handler("account add work");
     await env.handler("account add personal");
-    const cfg = loadGlobalAccountConfig();
-    const env2 = makeEnv();
-    env2.models = cfg.accounts.map((a) => ({ provider: a.credentialId, id: "gpt-5.5" }));
-    env2.auth = Object.fromEntries(cfg.accounts.map((a) => [a.credentialId, { configured: true }]));
-    await env2.handler("pool create prod work personal");
+    await env.handler("pool create prod work personal");
+    assert.ok(lastNotify(env).includes("not authenticated"), "unavailable members rejected clearly");
+    assert.equal(env.notifications.at(-1)?.type, "error");
+    assert.equal(loadGlobalAccountConfig().pools?.length ?? 0, 0, "no pool created");
+
+    authenticateAll(env);
+    await env.handler("pool create prod work personal");
     const after = loadGlobalAccountConfig();
     assert.equal(after.pools?.length, 1);
     assert.equal(after.pools![0].name, "prod");
     assert.deepEqual(after.pools![0].credentialIds, ["openai-codex-2", "openai-codex-3"]);
-    assert.ok(lastNotify(env2).includes("Created pool \"prod\""));
+    assert.ok(lastNotify(env).includes("Created pool \"prod\""));
   });
 
   test("create rejects unknown members without creating", async () => {
@@ -283,6 +292,7 @@ describe("/codex pool", () => {
   test("list reports pools with members", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
     await env.handler("pool list");
     const sent = env.sent[env.sent.length - 1];
@@ -293,6 +303,7 @@ describe("/codex pool", () => {
   test("inspect shows per-member status", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
     await env.handler("pool inspect prod");
     const sent = env.sent[env.sent.length - 1];
@@ -303,6 +314,7 @@ describe("/codex pool", () => {
   test("enable/disable toggle the pool", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
     await env.handler("pool disable prod");
     assert.equal(loadGlobalAccountConfig().pools![0].enabled, false);
@@ -310,11 +322,19 @@ describe("/codex pool", () => {
     assert.equal(loadGlobalAccountConfig().pools![0].enabled, true);
   });
 
-  test("add and remove adjust membership", async () => {
+  test("add rejects unauthenticated members and adds once authenticated", async () => {
     const env = makeEnv();
     await env.handler("account add work");
     await env.handler("account add personal");
+    authenticateAll(env);
     await env.handler("pool create prod work");
+
+    env.auth["openai-codex-3"] = { configured: false };
+    await env.handler("pool add prod personal");
+    assert.ok(lastNotify(env).includes("not authenticated"));
+    assert.deepEqual(loadGlobalAccountConfig().pools![0].credentialIds, ["openai-codex-2"], "member not added");
+
+    env.auth["openai-codex-3"] = { configured: true };
     await env.handler("pool add prod personal");
     assert.deepEqual(loadGlobalAccountConfig().pools![0].credentialIds, ["openai-codex-2", "openai-codex-3"]);
     await env.handler("pool remove prod personal");
@@ -324,6 +344,7 @@ describe("/codex pool", () => {
   test("delete removes the pool", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
     await env.handler("pool delete prod");
     assert.equal(loadGlobalAccountConfig().pools?.length ?? 0, 0);
@@ -333,13 +354,11 @@ describe("/codex pool", () => {
     const env = makeEnv();
     await env.handler("account add work");
     await env.handler("account add personal");
-    let cfg = loadGlobalAccountConfig();
-    env.models = cfg.accounts.map((a) => ({ provider: a.credentialId, id: "gpt-5.5" }));
-    env.auth = Object.fromEntries(cfg.accounts.map((a) => [a.credentialId, { configured: true }]));
+    authenticateAll(env);
     await env.handler("pool create prod work personal");
 
     await env.handler("pool use prod");
-    cfg = loadGlobalAccountConfig();
+    let cfg = loadGlobalAccountConfig();
     assert.equal(env.setModelCalls.length, 1);
     assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "first eligible member");
     assert.equal(cfg.pools![0].lastUsedIndex, 0);
@@ -354,7 +373,9 @@ describe("/codex pool", () => {
   test("use with no eligible member warns without switching", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
+    env.auth = {}; // member becomes unavailable again
     await env.handler("pool use prod");
     assert.equal(env.setModelCalls.length, 0);
     assert.ok(lastNotify(env).includes("No eligible member"));
@@ -363,6 +384,7 @@ describe("/codex pool", () => {
   test("use on a disabled pool is blocked", async () => {
     const env = makeEnv();
     await env.handler("account add work");
+    authenticateAll(env);
     await env.handler("pool create prod work");
     await env.handler("pool disable prod");
     await env.handler("pool use prod");

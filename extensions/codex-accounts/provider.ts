@@ -7,6 +7,7 @@
  * `openai-codex` provider is never touched.
  */
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { Model, Provider } from "@earendil-works/pi-ai";
 import { getProviderAdapter } from "./registry.ts";
 import type { CodexAccount } from "./types.ts";
 
@@ -59,4 +60,44 @@ export function registerAllAccountProviders(
     if (registerAccountProvider(modelRegistry, account)) registered++;
   }
   return registered;
+}
+
+/** Model-registry slice needed to activate an account's model. */
+export interface AccountModelRegistry {
+  registerProvider(provider: Provider): void;
+  getAll(): Model<any>[];
+  hasConfiguredAuth(model: Model<any>): boolean;
+}
+
+/**
+ * Make an account's model the active model: (re)register its provider, pick
+ * the first model with configured auth, and switch via pi.setModel. Returns
+ * the switched model, or undefined when the account has no usable model
+ * (not registered/authenticated). Never throws.
+ */
+export async function activateAccountModel(
+  pi: { setModel(model: Model<any>): Promise<boolean> },
+  registry: AccountModelRegistry,
+  account: CodexAccount,
+): Promise<Model<any> | undefined> {
+  try {
+    registerAccountProvider(registry as unknown as ModelRegistry, account);
+  } catch {
+    // provider registration is best-effort; the model pick below still applies
+  }
+  const available = registry.getAll().find((m) => {
+    if (m.provider !== account.credentialId) return false;
+    try {
+      return registry.hasConfiguredAuth(m);
+    } catch {
+      return false;
+    }
+  });
+  if (!available) return undefined;
+  try {
+    const switched = await pi.setModel(available);
+    return switched ? available : undefined;
+  } catch {
+    return undefined;
+  }
 }

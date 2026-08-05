@@ -22,6 +22,13 @@ export function rotationContextFrom(ctx: AuthAwareContext): RotationContext {
         return false;
       }
     },
-    allowed: (id) => isCredentialAllowed(ctx.cwd, id),
+    allowed: (id) => {
+      try {
+        return isCredentialAllowed(ctx.cwd, id);
+      } catch {
+        // e.g. missing cwd in odd contexts — never block on a broken check
+        return true;
+      }
+    },
   };
 }

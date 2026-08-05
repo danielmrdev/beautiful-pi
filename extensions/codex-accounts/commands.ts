@@ -17,7 +17,7 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { Model } from "@earendil-works/pi-ai";import {
+import {
   loadGlobalAccountConfig,
   saveGlobalAccountConfig,
   addAccount,
@@ -36,12 +36,12 @@ import type { Model } from "@earendil-works/pi-ai";import {
   resolvePool,
   listPools,
 } from "./store.ts";
-import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId } from "./provider.ts";
+import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId, activateAccountModel } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
-import { nextEligibleMember, getSharedRotationState, beginOrContinueRequest, isCooldownActive } from "./rotation.ts";
+import { nextEligibleMember, getSharedRotationState, beginNewRequest, isCooldownActive } from "./rotation.ts";
 import { rotationContextFrom } from "./context.ts";
-import type { AccountAuthStatus, AccountConfig, CodexAccount, CodexPool } from "./types.ts";
+import type { AccountAuthStatus, AccountConfig, CodexAccount } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
@@ -68,18 +68,9 @@ const USAGE = [
   "  use <pool>                  round-robin: activate the next eligible member",
 ].join("\n");
 
-/** Minimal UI shape notify() needs — satisfied by ExtensionCommandContext. */
-export interface NotifyContext {
-  hasUI?: boolean;
-  ui?: {
-    notify(message: string, type?: "info" | "warning" | "error"): void;
-  };
+function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error" = "info"): void {
+  if (ctx.hasUI) ctx.ui.notify(message, type);
 }
-
-export function notify(ctx: NotifyContext, message: string, type: "info" | "warning" | "error" = "info"): void {
-  if (ctx.hasUI) ctx.ui?.notify(message, type);
-}
-
 function sendOutput(pi: ExtensionAPI, lines: string[]): void {
   pi.sendMessage({
     customType: "codex-accounts",
@@ -216,29 +207,14 @@ async function cmdSwitch(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: st
     notify(ctx, `Account ${account.credentialId} is restricted in this project`, "warning");
     return;
   }
-  registerAccountProvider(ctx.modelRegistry, account);
-  const models = ctx.modelRegistry
-    .getAll()
-    .filter((m) => m.provider === account.credentialId);
-  const available = models.find((m) => {
-    try {
-      return ctx.modelRegistry.hasConfiguredAuth(m);
-    } catch {
-      return false;
-    }
-  });
-  if (!available) {
+  const model = await activateAccountModel(pi, ctx.modelRegistry, account);
+  if (!model) {
     notify(ctx, `No models for "${account.label}". Authenticate first with: /login ${account.credentialId}`, "warning");
-    return;
-  }
-  const ok = await pi.setModel(available as Model<any>);
-  if (!ok) {
-    notify(ctx, `Could not switch to "${account.label}" (no API key available). Authenticate with: /login ${account.credentialId}`, "warning");
     return;
   }
   const next = setActiveAccount(cfg, account.id);
   saveGlobalAccountConfig(next);
-  notify(ctx, `Switched to Codex account "${account.label}" (${account.credentialId}, ${available.id})`);
+  notify(ctx, `Switched to Codex account "${account.label}" (${account.credentialId}, ${model.id})`);
 }
 
 async function cmdList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
@@ -298,7 +274,8 @@ function poolMemberLabel(cfg: AccountConfig, credentialId: string): string {
 function poolMemberStatus(ctx: ExtensionCommandContext, cfg: AccountConfig, credentialId: string): string {
   const account = cfg.accounts.find((a) => a.credentialId === credentialId);
   const status = account ? statusLineOf(ctx, account) : "no account entry";
-  const restricted = !isCredentialAllowed(ctx.cwd, credentialId);
+  const rotCtx = rotationContextFrom(ctx);
+  const restricted = !rotCtx.allowed(credentialId);
   const cooling = isCooldownActive(getSharedRotationState(), credentialId);
   return `${status}${cooling ? " · cooling down" : ""}${restricted ? " · restricted in this project" : ""}`;
 }
@@ -315,18 +292,17 @@ async function cmdPoolCreate(pi: ExtensionAPI, ctx: ExtensionCommandContext, res
     notify(ctx, `Could not create pool: ${result.errors.join("; ")}`, "error");
     return;
   }
+  // AC2: unavailable (unauthenticated) members are rejected, not admitted.
+  const rotCtx = rotationContextFrom(ctx);
+  const unauthenticated = result.pool!.credentialIds.filter((id) => !rotCtx.authConfigured(id));
+  if (unauthenticated.length > 0) {
+    const labels = unauthenticated.map((id) => poolMemberLabel(result.cfg, id)).join(", ");
+    saveGlobalAccountConfig(deletePool(result.cfg, name));
+    notify(ctx, `Could not create pool: ${labels} not authenticated yet. Authenticate with: /login <credentialId>`, "error");
+    return;
+  }
   saveGlobalAccountConfig(result.cfg);
-  const unauthenticated = result.pool!.credentialIds.filter((id) => {
-    try {
-      return ctx.modelRegistry.getProviderAuthStatus(id)?.configured !== true;
-    } catch {
-      return true;
-    }
-  });
-  const warn = unauthenticated.length > 0
-    ? ` Note: ${unauthenticated.map((id) => poolMemberLabel(result.cfg, id)).join(", ")} not authenticated yet.`
-    : "";
-  notify(ctx, `Created pool "${name}" with ${result.pool!.credentialIds.length} member(s).${warn}`);
+  notify(ctx, `Created pool "${name}" with ${result.pool!.credentialIds.length} member(s)`);
 }
 
 async function cmdPoolList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
@@ -396,11 +372,21 @@ async function cmdPoolAdd(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: 
     notify(ctx, `Could not add members: ${result.errors.join("; ")}`, "error");
     return;
   }
+  // AC2: newly added members must be available (authenticated).
+  const rotCtx = rotationContextFrom(ctx);
+  const unauthenticated = memberRefs
+    .map((ref) => resolveAccount(result.cfg, ref.trim()))
+    .filter((a): a is CodexAccount => !!a)
+    .filter((a) => !rotCtx.authConfigured(a.credentialId))
+    .map((a) => a.credentialId);
+  if (unauthenticated.length > 0) {
+    const rollback = removePoolMembers(result.cfg, name, unauthenticated);
+    saveGlobalAccountConfig(rollback.cfg);
+    notify(ctx, `Could not add members: ${unauthenticated.join(", ")} not authenticated yet. Authenticate with: /login <credentialId>`, "error");
+    return;
+  }
   saveGlobalAccountConfig(result.cfg);
-  const added = result.errors.length === 0
-    ? `Added member(s) to pool "${name}"`
-    : `Added valid member(s); unknown: ${result.errors.join(", ")}`;
-  notify(ctx, added);
+  notify(ctx, `Added member(s) to pool "${name}"`);
 }
 
 async function cmdPoolRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -431,7 +417,7 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
     return;
   }
   const state = getSharedRotationState();
-  beginOrContinueRequest(state, `__pool_use_${Date.now()}`);
+  beginNewRequest(state);
   const member = nextEligibleMember(pool, cfg, rotationContextFrom(ctx), state);
   if (!member) {
     notify(
@@ -442,22 +428,9 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
     return;
   }
   const account = cfg.accounts.find((a) => a.credentialId === member.credentialId)!;
-  registerAccountProvider(ctx.modelRegistry, account);
-  const models = ctx.modelRegistry.getAll().filter((m) => m.provider === member.credentialId);
-  const available = models.find((m) => {
-    try {
-      return ctx.modelRegistry.hasConfiguredAuth(m);
-    } catch {
-      return false;
-    }
-  });
-  if (!available) {
+  const model = await activateAccountModel(pi, ctx.modelRegistry, account);
+  if (!model) {
     notify(ctx, `No models for "${account.label}". Authenticate first with: /login ${member.credentialId}`, "warning");
-    return;
-  }
-  const ok = await pi.setModel(available as Model<any>);
-  if (!ok) {
-    notify(ctx, `Could not activate ${account.label} (no API key available). Authenticate with: /login ${member.credentialId}`, "warning");
     return;
   }
   const withPointer: AccountConfig = {
@@ -465,7 +438,7 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
     pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member.index } : p)),
   };
   saveGlobalAccountConfig(withPointer);
-  notify(ctx, `Pool "${pool.name}": active member is "${account.label}" (${member.credentialId}, ${available.id})`);
+  notify(ctx, `Pool "${pool.name}": active member is "${account.label}" (${member.credentialId}, ${model.id})`);
 }
 
 // ── Command registration ─────────────────────────────────────────────────────

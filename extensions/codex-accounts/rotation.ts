@@ -32,17 +32,19 @@ export function beginOrContinueRequest(state: RotationState, userText: string): 
   state.attempted.clear();
 }
 
+/** Start a fresh request: drop the attempted set and any replay key. */
+export function beginNewRequest(state: RotationState): void {
+  state.replayText = undefined;
+  state.attempted.clear();
+}
+
 // Shared singleton: cooldowns persist across commands and failovers; the
-// attempted set is reset per request via beginOrContinueRequest.
+// attempted set is reset per request via beginOrContinueRequest/beginNewRequest.
 
 let sharedState: RotationState = createRotationState();
 
 export function getSharedRotationState(): RotationState {
   return sharedState;
-}
-
-export function resetSharedRotationState(): void {
-  sharedState = createRotationState();
 }
 
 export function markCooldown(state: RotationState, credentialId: string, seconds: number, now: number = Date.now()): void {

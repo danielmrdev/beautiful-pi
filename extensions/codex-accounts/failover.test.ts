@@ -3,19 +3,42 @@
  * the failover decision (replay accumulation, cooldowns, exhaustion) and the
  * action taken on a retry decision.
  */
-import { test, describe } from "node:test";
+import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   isCodexRateLimitError,
   extractRunInfo,
   decideFailover,
   actOnFailover,
+  wireFailover,
 } from "./failover.ts";
 import { createRotationState, markCooldown } from "./rotation.ts";
+import { loadGlobalAccountConfig } from "./store.ts";
+import { fakePi } from "../test-helpers.ts";
 import type { AccountConfig, CodexAccount, CodexPool } from "./types.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const NOW = 1_000_000_000_000;
+
+let tmpHome: string;
+
+before(() => {
+  tmpHome = mkdtempSync(join(tmpdir(), "bpi-failover-test-"));
+  process.env["HOME"] = tmpHome;
+});
+
+after(() => {
+  rmSync(tmpHome, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  // The wireFailover /reload guard is a process-global symbol; clear it so
+  // each wiring test registers its own handlers.
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for("beautiful-pi:codex-failover-wired")];
+});
 
 function account(id: string): CodexAccount {
   return {
@@ -212,6 +235,9 @@ describe("actOnFailover", () => {
     return {
       modelRegistry: {
         getAll: () => models,
+        getProviderAuthStatus: () => ({ configured: true }),
+        registerProvider: () => {},
+        hasConfiguredAuth: () => true,
       },
       cwd: "/tmp/proj",
       isProjectTrusted: () => true,
@@ -220,7 +246,23 @@ describe("actOnFailover", () => {
     };
   }
 
-  test("switches model and re-sends the user text on a retry decision", async () => {
+  function writeFixture(pools: CodexPool[]): void {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "beautiful-pi.json"),
+      JSON.stringify({
+        accounts: {
+          version: 1,
+          accounts: [account("openai-codex"), account("openai-codex-2")],
+          pools,
+        },
+      }),
+    );
+  }
+
+  test("switches model, advances the pointer, and re-sends the user text", async () => {
+    writeFixture([pool(["openai-codex", "openai-codex-2"])]);
     const { pi, calls } = fakePi();
     const ctx = fakeCtx([
       { provider: "openai-codex", id: "gpt-5.5" },
@@ -231,14 +273,89 @@ describe("actOnFailover", () => {
       fromCredentialId: "openai-codex",
       toCredentialId: "openai-codex-2",
       poolName: "prod",
+      toIndex: 1,
+      poolId: "pool-1",
       userText: "retry me",
     });
     assert.deepEqual(calls, ["setModel", "send:retry me"]);
+    const saved = loadGlobalAccountConfig();
+    assert.equal(saved.pools![0].lastUsedIndex, 1, "rotation pointer persisted after failover");
   });
 
   test("does nothing for a none decision", async () => {
     const { pi, calls } = fakePi();
     await actOnFailover(pi, fakeCtx([]) as never, { kind: "none" });
     assert.deepEqual(calls, []);
+  });
+});
+
+describe("failover wiring (agent_end -> agent_settled)", () => {
+  test("captures the run and failovers on a settled rate-limit error", async () => {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "beautiful-pi.json"),
+      JSON.stringify({
+        accounts: {
+          version: 1,
+          accounts: [account("openai-codex"), account("openai-codex-2")],
+          pools: [pool(["openai-codex", "openai-codex-2"])],
+        },
+      }),
+    );
+    const pi: any = fakePi();
+    const setModelCalls: any[] = [];
+    const sent: string[] = [];
+    pi.setModel = async (m: any) => { setModelCalls.push(m); return true; };
+    pi.sendUserMessage = (t: string) => { sent.push(t); };
+    wireFailover(pi);
+    const ctx = {
+      cwd: "/tmp/proj",
+      hasUI: false,
+      modelRegistry: {
+        getAll: () => [{ provider: "openai-codex-2", id: "gpt-5.5" }],
+        getProviderAuthStatus: () => ({ configured: true }),
+        registerProvider: () => {},
+        hasConfiguredAuth: () => true,
+      },
+    };
+    const agentEnd = (pi.events.get("agent_end") ?? [])[0];
+    const agentSettled = (pi.events.get("agent_settled") ?? [])[0];
+    assert.ok(agentEnd && agentSettled, "both handlers registered");
+    await agentEnd({ messages: [
+      { role: "user", content: "retry me", timestamp: 1 },
+      { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "429 rate limit", timestamp: 2 },
+    ] }, ctx);
+    await agentSettled({}, ctx);
+    assert.equal(setModelCalls.length, 1);
+    assert.equal(setModelCalls[0].provider, "openai-codex-2", "model switched to next eligible member");
+    assert.deepEqual(sent, ["retry me"], "interrupted request re-sent");
+  });
+
+  test("a duplicated agent_settled for the same run does not double-failover", async () => {
+    const pi: any = fakePi();
+    let setModelCount = 0;
+    pi.setModel = async () => { setModelCount++; return true; };
+    pi.sendUserMessage = () => {};
+    wireFailover(pi);
+    const ctx = {
+      cwd: "/tmp/proj",
+      hasUI: false,
+      modelRegistry: {
+        getAll: () => [{ provider: "openai-codex-2", id: "gpt-5.5" }],
+        getProviderAuthStatus: () => ({ configured: true }),
+        registerProvider: () => {},
+        hasConfiguredAuth: () => true,
+      },
+    };
+    const agentEnd = (pi.events.get("agent_end") ?? [])[0];
+    const agentSettled = (pi.events.get("agent_settled") ?? [])[0];
+    await agentEnd({ messages: [
+      { role: "user", content: "same", timestamp: 1 },
+      { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "quota", timestamp: 2 },
+    ] }, ctx);
+    await agentSettled({}, ctx);
+    await agentSettled({}, ctx);
+    assert.equal(setModelCount, 1, "settled re-fire is ignored");
   });
 });
