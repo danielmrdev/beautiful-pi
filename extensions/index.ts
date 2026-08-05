@@ -9,7 +9,7 @@ import settingsExtension from "./settings/index.ts";
 import sessionTitleExtension from "./session-title/index.ts";
 import herdrPaneSyncExtension from "./herdr-pane-sync/index.ts";
 import codexAccountsExtension from "./codex-accounts/index.ts";
-import compactionCoordinator from "./compaction/coordinator.ts";
+import compactionCoordinator from "./compaction/index.ts";
 
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /bpi (+ /beautiful-pi alias)
