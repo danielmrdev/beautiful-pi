@@ -17,13 +17,14 @@ import {
   nextEligibleMember,
   beginOrContinueRequest,
   getSharedRotationState,
+  type EligibleMember,
   type RotationContext,
   type RotationState,
 } from "./rotation.ts";
 import { nextChainMember, chainContainingCredential, chainPoolForCredential } from "./chain.ts";
 import { rotationContextFrom } from "./context.ts";
 import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig, sameTarget } from "./store.ts";
-import type { AccountConfig, ChainTarget } from "./types.ts";
+import type { AccountConfig, ChainTarget, CodexChain, CodexPool } from "./types.ts";
 
 /** Structural slice of the extension context the failover needs. */
 export interface FailoverContext {
@@ -112,6 +113,32 @@ export type FailoverDecision =
   | { kind: "none" };
 
 /**
+ * Build the retry decision shared by the plain-pool and chain replay paths.
+ */
+function retryDecision(
+  fromCredentialId: string,
+  member: EligibleMember,
+  poolName: string,
+  pool?: CodexPool,
+  chain?: CodexChain,
+  toTargetIndex?: number,
+  userText?: string,
+): FailoverDecision {
+  return {
+    kind: "retry",
+    fromCredentialId,
+    toCredentialId: member.credentialId,
+    poolName,
+    toIndex: member.index,
+    ...(pool ? { poolId: pool.id, poolMembers: pool.credentialIds } : {}),
+    ...(chain && toTargetIndex !== undefined
+      ? { chainId: chain.id, toTargetIndex, chainTargets: chain.targets }
+      : {}),
+    userText: userText ?? "",
+  };
+}
+
+/**
  * Decide whether a settled run needs failover. Only Codex rate-limit errors
  * on a member of an enabled pool (directly, or via a chain target) trigger
  * rotation. The failed account is recorded as attempted (replay guard, keyed
@@ -122,55 +149,33 @@ export type FailoverDecision =
  * chain progress is preserved and failed targets are never revisited. Plain
  * pools keep the existing within-pool rotation.
  */
-export function decideFailover(
+export async function decideFailover(
   run: FailoverRunInfo,
   cfg: AccountConfig,
   ctx: RotationContext,
   state: RotationState,
   now: number = Date.now(),
-): FailoverDecision {
+): Promise<FailoverDecision> {
   if (!run.lastError || !isCodexRateLimitError(run.lastError)) return { kind: "none" };
   if (!run.lastProvider) return { kind: "none" };
+  beginOrContinueRequest(state, run.lastUserText);
+  state.attempted.add(run.lastProvider);
   const chain = chainContainingCredential(cfg, run.lastProvider);
   if (!chain) {
     const pool = (cfg.pools ?? []).find(
       (p) => p.enabled && p.credentialIds.includes(run.lastProvider!),
     );
     if (!pool) return { kind: "none" };
-    beginOrContinueRequest(state, run.lastUserText);
-    state.attempted.add(run.lastProvider);
     markCooldown(state, run.lastProvider, pool.cooldownSeconds, now);
     const member = nextEligibleMember(pool, cfg, ctx, state, now);
     if (!member) return { kind: "none" };
-    return {
-      kind: "retry",
-      fromCredentialId: run.lastProvider,
-      toCredentialId: member.credentialId,
-      poolName: pool.name,
-      toIndex: member.index,
-      poolId: pool.id,
-      poolMembers: pool.credentialIds,
-      userText: run.lastUserText,
-    };
+    return retryDecision(run.lastProvider, member, pool.name, pool, undefined, undefined, run.lastUserText);
   }
-  beginOrContinueRequest(state, run.lastUserText);
-  state.attempted.add(run.lastProvider);
   const owningPool = chainPoolForCredential(cfg, chain, run.lastProvider);
   markCooldown(state, run.lastProvider, owningPool?.cooldownSeconds ?? 60, now);
-  const walk = nextChainMember(chain, cfg, ctx, state, now);
+  const walk = await nextChainMember(chain, cfg, ctx, state, now);
   if (!walk) return { kind: "none" };
-  return {
-    kind: "retry",
-    fromCredentialId: run.lastProvider,
-    toCredentialId: walk.member.credentialId,
-    poolName: walk.pool?.name ?? chain.name,
-    toIndex: walk.member.index,
-    ...(walk.pool ? { poolId: walk.pool.id, poolMembers: walk.pool.credentialIds } : {}),
-    chainId: chain.id,
-    toTargetIndex: walk.targetIndex,
-    chainTargets: chain.targets,
-    userText: run.lastUserText,
-  };
+  return retryDecision(run.lastProvider, walk.member, walk.pool?.name ?? chain.name, walk.pool, chain, walk.targetIndex, run.lastUserText);
 }
 
 // ── Action ───────────────────────────────────────────────────────────────────
@@ -260,7 +265,7 @@ export function wireFailover(pi: ExtensionAPI): void {
     lastRun = extractRunInfo((event as { messages: unknown[] }).messages ?? []);
     actedOn = null;
   });
-  pi.on("agent_settled", (_event, ctx) => {
+  pi.on("agent_settled", async (_event, ctx) => {
     const run = lastRun;
     if (!run || !run.lastError || !run.lastUserText) return;
     if (runKey(run) === actedOn) return;
@@ -270,7 +275,7 @@ export function wireFailover(pi: ExtensionAPI): void {
     const global = loadGlobalAccountConfig();
     const project = ctx.isProjectTrusted?.() ? loadProjectAccountConfig(ctx.cwd) : null;
     const cfg = project ? resolveEffectiveConfig(global, project) : global;
-    const decision = decideFailover(run, cfg, rotationContextFrom(ctx), getSharedRotationState());
+    const decision = await decideFailover(run, cfg, rotationContextFrom(ctx), getSharedRotationState());
     if (decision.kind === "retry") {
       actedOn = runKey(run);
       return actOnFailover(pi, ctx, decision);

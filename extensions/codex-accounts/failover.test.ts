@@ -98,7 +98,7 @@ describe("isCodexRateLimitError", () => {
 });
 
 describe("extractRunInfo", () => {
-  test("pulls user text, provider, and error from the final assistant message", () => {
+  test("pulls user text, provider, and error from the final assistant message", async () => {
     const run = extractRunInfo([
       { role: "user", content: "hello", timestamp: 1 },
       { role: "assistant", provider: "openai-codex-2", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "429 rate limit", timestamp: 2 },
@@ -108,7 +108,7 @@ describe("extractRunInfo", () => {
     assert.match(run.lastError ?? "", /rate limit/);
   });
 
-  test("joins structured user content into text", () => {
+  test("joins structured user content into text", async () => {
     const run = extractRunInfo([
       { role: "user", content: [{ type: "text", text: "fix " }, { type: "text", text: "this" }], timestamp: 1 },
       { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "quota", timestamp: 2 },
@@ -116,7 +116,7 @@ describe("extractRunInfo", () => {
     assert.equal(run.lastUserText, "fix this");
   });
 
-  test("no error run yields no provider/error", () => {
+  test("no error run yields no provider/error", async () => {
     const run = extractRunInfo([
       { role: "user", content: "hi", timestamp: 1 },
       { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "stop", timestamp: 2 },
@@ -126,10 +126,10 @@ describe("extractRunInfo", () => {
 });
 
 describe("decideFailover", () => {
-  test("rate-limit failure rotates to the next eligible member", () => {
+  test("rate-limit failure rotates to the next eligible member", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
     const state = createRotationState();
-    const decision = decideFailover(
+    const decision = await decideFailover(
       { lastUserText: "retry me", lastProvider: "openai-codex", lastError: "429 rate limit" },
       cfg,
       ctx(),
@@ -146,11 +146,11 @@ describe("decideFailover", () => {
     assert.ok(state.cooldownUntil.get("openai-codex")! > NOW, "failed account cooled down");
   });
 
-  test("repeated failures on the same user text accumulate attempts", () => {
+  test("repeated failures on the same user text accumulate attempts", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2", "openai-codex-3"], [pool(["openai-codex", "openai-codex-2", "openai-codex-3"])]);
     const state = createRotationState();
-    const first = decideFailover({ lastUserText: "same", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
-    const second = decideFailover({ lastUserText: "same", lastProvider: "openai-codex-2", lastError: "429" }, cfg, ctx(), state, NOW);
+    const first = await decideFailover({ lastUserText: "same", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
+    const second = await decideFailover({ lastUserText: "same", lastProvider: "openai-codex-2", lastError: "429" }, cfg, ctx(), state, NOW);
     assert.equal(first.kind, "retry");
     assert.equal(second.kind, "retry");
     if (first.kind === "retry" && second.kind === "retry") {
@@ -160,28 +160,28 @@ describe("decideFailover", () => {
     assert.deepEqual([...state.attempted].sort(), ["openai-codex", "openai-codex-2"]);
   });
 
-  test("a new user text resets the attempted set", () => {
+  test("a new user text resets the attempted set", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
     const state = createRotationState();
-    decideFailover({ lastUserText: "old", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
-    const fresh = decideFailover({ lastUserText: "new request", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
+    await decideFailover({ lastUserText: "old", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
+    const fresh = await decideFailover({ lastUserText: "new request", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
     assert.equal(fresh.kind, "retry");
     if (fresh.kind === "retry") {
       assert.equal(fresh.toCredentialId, "openai-codex-2", "attempted set was reset for the new request");
     }
   });
 
-  test("returns none when every member has been attempted", () => {
+  test("returns none when every member has been attempted", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
     const state = createRotationState();
-    decideFailover({ lastUserText: "same", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
-    const exhausted = decideFailover({ lastUserText: "same", lastProvider: "openai-codex-2", lastError: "429" }, cfg, ctx(), state, NOW);
+    await decideFailover({ lastUserText: "same", lastProvider: "openai-codex", lastError: "429" }, cfg, ctx(), state, NOW);
+    const exhausted = await decideFailover({ lastUserText: "same", lastProvider: "openai-codex-2", lastError: "429" }, cfg, ctx(), state, NOW);
     assert.equal(exhausted.kind, "none");
   });
 
-  test("non-rate-limit errors never fail over", () => {
+  test("non-rate-limit errors never fail over", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
-    const decision = decideFailover(
+    const decision = await decideFailover(
       { lastUserText: "x", lastProvider: "openai-codex", lastError: "network timeout" },
       cfg,
       ctx(),
@@ -191,9 +191,9 @@ describe("decideFailover", () => {
     assert.equal(decision.kind, "none");
   });
 
-  test("providers outside any enabled pool never fail over", () => {
+  test("providers outside any enabled pool never fail over", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex-2"])]);
-    const decision = decideFailover(
+    const decision = await decideFailover(
       { lastUserText: "x", lastProvider: "openai-codex", lastError: "429" },
       cfg,
       ctx(),
@@ -203,11 +203,11 @@ describe("decideFailover", () => {
     assert.equal(decision.kind, "none");
   });
 
-  test("members already cooling down are skipped by the rotation", () => {
+  test("members already cooling down are skipped by the rotation", async () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2", "openai-codex-3"], [pool(["openai-codex", "openai-codex-2", "openai-codex-3"])]);
     const state = createRotationState();
     markCooldown(state, "openai-codex-2", 60, NOW);
-    const decision = decideFailover(
+    const decision = await decideFailover(
       { lastUserText: "x", lastProvider: "openai-codex", lastError: "429" },
       cfg,
       ctx(),
@@ -386,11 +386,11 @@ describe("decideFailover with chains", () => {
     };
   }
 
-  test("chain replay rotates past the failed member, then advances the chain", () => {
+  test("chain replay rotates past the failed member, then advances the chain", async () => {
     const cfg = cfgWithChains();
     const state = createRotationState();
     const run = { lastUserText: "retry me", lastProvider: "openai-codex", lastError: "429 rate limit" };
-    const first = decideFailover(run, cfg, ctx(), state, NOW);
+    const first = await decideFailover(run, cfg, ctx(), state, NOW);
     assert.equal(first.kind, "retry");
     if (first.kind !== "retry") return;
     assert.equal(first.toCredentialId, "openai-codex-2", "rotates past failed member in same pool target");
@@ -398,7 +398,7 @@ describe("decideFailover with chains", () => {
     assert.equal(first.toTargetIndex, 0, "chain progress stays on the failing target's pool");
     // Second failure on the same user text: pool exhausted -> next chain target.
     const secondRun = { ...run, lastProvider: "openai-codex-2" };
-    const second = decideFailover(secondRun, cfg, ctx(), state, NOW);
+    const second = await decideFailover(secondRun, cfg, ctx(), state, NOW);
     assert.equal(second.kind, "retry");
     if (second.kind !== "retry") return;
     assert.equal(second.toCredentialId, "openai-codex-3", "moved to the next chain target");
@@ -406,26 +406,26 @@ describe("decideFailover with chains", () => {
     assert.equal(second.poolId, "pool-2");
   });
 
-  test("chain replay never revisits the failed target", () => {
+  test("chain replay never revisits the failed target", async () => {
     const cfg = cfgWithChains();
     const state = createRotationState();
     // Both pool-1 members failed on this user text already.
     const run1 = { lastUserText: "same text", lastProvider: "openai-codex", lastError: "429 rate limit" };
-    const d1 = decideFailover(run1, cfg, ctx(), state, NOW);
+    const d1 = await decideFailover(run1, cfg, ctx(), state, NOW);
     assert.equal(d1.kind, "retry");
     if (d1.kind !== "retry") return;
     assert.equal(d1.toCredentialId, "openai-codex-2");
     const run2 = { lastUserText: "same text", lastProvider: "openai-codex-2", lastError: "429 rate limit" };
-    const d2 = decideFailover(run2, cfg, ctx(), state, NOW);
+    const d2 = await decideFailover(run2, cfg, ctx(), state, NOW);
     assert.equal(d2.kind, "retry");
     if (d2.kind !== "retry") return;
     assert.equal(d2.toCredentialId, "openai-codex-3");
     const run3 = { lastUserText: "same text", lastProvider: "openai-codex-3", lastError: "429 rate limit" };
-    const d3 = decideFailover(run3, cfg, ctx(), state, NOW);
+    const d3 = await decideFailover(run3, cfg, ctx(), state, NOW);
     assert.equal(d3.kind, "none", "no member left in the chain");
   });
 
-  test("a direct account target in a chain fails over to the next target", () => {
+  test("a direct account target in a chain fails over to the next target", async () => {
     const pools = [pool(["openai-codex"], { id: "pool-1", name: "prod", lastUsedIndex: -1 })];
     const cfg: AccountConfig = {
       version: 1,
@@ -447,7 +447,7 @@ describe("decideFailover with chains", () => {
     };
     const state = createRotationState();
     const run = { lastUserText: "retry me", lastProvider: "openai-codex", lastError: "rate limit hit" };
-    const d = decideFailover(run, cfg, ctx(), state, NOW);
+    const d = await decideFailover(run, cfg, ctx(), state, NOW);
     assert.equal(d.kind, "retry");
     if (d.kind !== "retry") return;
     assert.equal(d.toCredentialId, "openai-codex-2");
@@ -511,7 +511,7 @@ describe("actOnFailover with chains", () => {
 });
 
 describe("decideFailover with project overrides", () => {
-  test("replay honors an effective pool override's member list", () => {
+  test("replay honors an effective pool override's member list", async () => {
     // Global pool prod = [openai-codex, openai-codex-2]; project override = [openai-codex-2, openai-codex-3].
     const global: AccountConfig = {
       version: 1,
@@ -534,7 +534,7 @@ describe("decideFailover with project overrides", () => {
     assert.equal(effective.pools![0].credentialIds.length, 2, "override applied");
     const state = createRotationState();
     const run = { lastUserText: "retry me", lastProvider: "openai-codex-2", lastError: "429 rate limit" };
-    const d = decideFailover(run, effective, ctx(), state, NOW);
+    const d = await decideFailover(run, effective, ctx(), state, NOW);
     assert.equal(d.kind, "retry");
     if (d.kind !== "retry") return;
     assert.equal(d.toCredentialId, "openai-codex-3", "replay routes to the override member, not the global one");

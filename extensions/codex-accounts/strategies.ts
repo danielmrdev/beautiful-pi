@@ -98,13 +98,16 @@ export function selectScheduled(
   state: RotationState,
   schedule: PoolSchedule | undefined,
   now: Date,
+  members?: EligibleMember[],
 ): EligibleMember | undefined {
-  if (!isScheduleActive(schedule, now)) return nextEligibleMember(pool, cfg, ctx, state, now.getTime());
-  const members = eligibleMembers(pool, cfg, ctx, state, now.getTime());
-  if (members.length === 0) return undefined;
-  const primaries = members.filter((m) => memberRoleOf(schedule, m.credentialId) === "primary");
+  if (!isScheduleActive(schedule, now)) {
+    return (members ?? eligibleMembers(pool, cfg, ctx, state, now.getTime()))[0];
+  }
+  const list = members ?? eligibleMembers(pool, cfg, ctx, state, now.getTime());
+  if (list.length === 0) return undefined;
+  const primaries = list.filter((m) => memberRoleOf(schedule, m.credentialId) === "primary");
   if (primaries.length > 0) return primaries[0];
-  return members.find((m) => memberRoleOf(schedule, m.credentialId) === "backup");
+  return list.find((m) => memberRoleOf(schedule, m.credentialId) === "backup");
 }
 
 // ── custom ───────────────────────────────────────────────────────────────────

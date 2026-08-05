@@ -59,7 +59,7 @@ import {
 } from "./strategies.ts";
 import { fetchAccountQuotaReport, formatAccountQuota, formatUnavailableReason } from "./quota.ts";
 import { DATE_RE, TIME_RE, WINDOW_RE } from "./schedule.ts";
-import { chainTargetStatus, memberUnavailableReason, type ChainWalkResult } from "./chain.ts";
+import { chainTargetStatus, memberUnavailableReason, walkChain, type ChainWalkResult } from "./chain.ts";
 import {
   createChain,
   deleteChain,
@@ -425,7 +425,7 @@ async function cmdPoolList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Prom
 }
 
 async function cmdPoolInspect(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
-  const cfg = loadGlobalAccountConfig();
+  const cfg = loadEffective(ctx);
   const pool = resolvePool(cfg, ref);
   if (!pool) {
     sendOutput(pi, [`Pool "${ref}" not found. See: /codex pool list`]);
@@ -514,7 +514,8 @@ async function cmdPoolRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, res
 }
 
 async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
-  const cfg = loadGlobalAccountConfig();
+  const cfg = loadEffective(ctx);
+  const global = loadGlobalAccountConfig();
   const pool = resolvePool(cfg, ref);
   if (!pool) {
     notify(ctx, `Pool "${ref}" not found. See: /codex pool list`, "error");
@@ -543,8 +544,10 @@ async function cmdPoolUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: s
     return;
   }
   const withPointer: AccountConfig = {
-    ...setActiveAccount(cfg, account.id),
-    pools: (cfg.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member.index } : p)),
+    ...setActiveAccount(global, account.id),
+    pools: poolPointerPersists(global, pool.id, pool.credentialIds)
+      ? (global.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member.index } : p))
+      : (global.pools ?? []),
   };
   saveGlobalAccountConfig(withPointer);
   notify(ctx, `Pool "${pool.name}": active member is "${account.label}" (${member.credentialId}, ${model.id})`);
@@ -564,6 +567,8 @@ const DAY_NUM_TO_NAME: Record<number, string> = Object.fromEntries(
  * to deterministic round-robin when its specialized data is unavailable;
  * quota-first fetches live quota for the eligible set (network failures and
  * missing credentials simply exclude a member from the healthiest ranking).
+ * `members` narrows the eligible set (preset model filtering); when absent
+ * the pool's full eligible scan is used.
  */
 async function selectForStrategy(
   pool: CodexPool,
@@ -571,16 +576,18 @@ async function selectForStrategy(
   rotCtx: RotationContext,
   state: RotationState,
   ctx: ExtensionCommandContext,
+  members?: EligibleMember[],
 ): Promise<EligibleMember | undefined> {
   const strategy = pool.strategy ?? "round-robin";
+  const eligible = () => members ?? eligibleMembers(pool, cfg, rotCtx, state);
   if (strategy === "quota-first") {
-    const members = eligibleMembers(pool, cfg, rotCtx, state);
+    const list = eligible();
     const reports = await Promise.all(
-      members.map((m) => fetchAccountQuotaReport(cfg.accounts.find((a) => a.credentialId === m.credentialId)!)),
+      list.map((m) => fetchAccountQuotaReport(cfg.accounts.find((a) => a.credentialId === m.credentialId)!)),
     );
     const quotaOf = (id: string) => reports.find((r) => r.account.credentialId === id)?.quota;
     // Pass the already-scanned members so the selector doesn't rescan.
-    const member = selectQuotaFirst(pool, cfg, rotCtx, state, quotaOf, Date.now(), members);
+    const member = selectQuotaFirst(pool, cfg, rotCtx, state, quotaOf, Date.now(), list);
     if (member) {
       const withData = reports.filter((r) => r.quota);
       const noData = withData.length === 0;
@@ -595,7 +602,7 @@ async function selectForStrategy(
   }
   if (strategy === "scheduled") {
     const now = new Date();
-    const member = selectScheduled(pool, cfg, rotCtx, state, pool.schedule, now);
+    const member = selectScheduled(pool, cfg, rotCtx, state, pool.schedule, now, eligible());
     if (member && !isScheduleActive(pool.schedule, now)) {
       notify(ctx, `Pool "${pool.name}": schedule inactive — using round-robin`, "warning");
     }
@@ -604,12 +611,12 @@ async function selectForStrategy(
   if (strategy === "custom") {
     if (!pool.selector) {
       notify(ctx, `Pool "${pool.name}": no selector configured — using round-robin (set one with /codex pool selector)`, "warning");
-      return nextEligibleMember(pool, cfg, rotCtx, state);
+      return eligible()[0];
     }
-    const members = eligibleMembers(pool, cfg, rotCtx, state);
+    const list = eligible();
     const refOut = await execSelector(pool.selector, {
       pool: { name: pool.name, credentialIds: pool.credentialIds },
-      eligible: members.map((m) => m.credentialId),
+      eligible: list.map((m) => m.credentialId),
       now: new Date().toISOString(),
     });
     const member = resolveCustomSelection(pool, cfg, rotCtx, state, refOut);
@@ -618,9 +625,9 @@ async function selectForStrategy(
       ? `selector returned an ineligible member ("${refOut}")`
       : "selector produced no usable member";
     notify(ctx, `Pool "${pool.name}": ${reason} — using round-robin`, "warning");
-    return nextEligibleMember(pool, cfg, rotCtx, state);
+    return list[0];
   }
-  return nextEligibleMember(pool, cfg, rotCtx, state);
+  return eligible()[0];
 }
 
 /** Run the custom selector shell command; resolves with its first stdout line. */
@@ -909,7 +916,8 @@ function chainProgressPersists(global: AccountConfig, chainId: string, targets: 
 /**
  * Walk a chain with strategy-aware selection: pool targets pick through the
  * pool's own strategy (quota-first/scheduled/custom/round-robin), account
- * targets are used directly. Skipped targets never break the walk.
+ * targets are used directly. Skipped targets never break the walk. Shares the
+ * walk skeleton with failover replay via chain.ts `walkChain`.
  */
 async function selectChainMember(
   chain: CodexChain,
@@ -918,33 +926,9 @@ async function selectChainMember(
   state: RotationState,
   ctx: ExtensionCommandContext,
 ): Promise<ChainWalkResult | undefined> {
-  if (!chain.enabled) return undefined;
-  const targets = chain.targets;
-  if (targets.length === 0) return undefined;
-  const start = Math.min(Math.max(chain.lastUsedTargetIndex, 0), targets.length - 1);
-  const skipped: string[] = [];
-  for (let i = start; i < targets.length; i++) {
-    const target = targets[i];
-    if (target.kind === "pool") {
-      const pool = resolvePoolById(cfg, target.poolId);
-      if (!pool || !pool.enabled || pool.credentialIds.length === 0) {
-        skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
-        continue;
-      }
-      const member = await selectForStrategy(pool, cfg, rotCtx, state, ctx);
-      if (!member) {
-        skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
-        continue;
-      }
-      return { member, pool, targetIndex: i, skipped };
-    }
-    if (memberUnavailableReason(target.credentialId, cfg, rotCtx, state)) {
-      skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
-      continue;
-    }
-    return { member: { credentialId: target.credentialId, index: -1 }, targetIndex: i, skipped };
-  }
-  return undefined;
+  return walkChain(chain, cfg, rotCtx, state, Date.now(), (pool, cfg2, ctx2, state2) =>
+    selectForStrategy(pool, cfg2, ctx2, state2, ctx),
+  );
 }
 
 function targetLabel(cfg: AccountConfig, target: ChainTarget): string {
@@ -1189,19 +1173,24 @@ async function cmdPresetActivate(pi: ExtensionAPI, ctx: ExtensionCommandContext,
   let account = member ? cfg.accounts.find((a) => a.credentialId === member!.credentialId) : undefined;
   let model = account ? findAccountModel(ctx.modelRegistry, account, preset.model) : undefined;
   // The strategy pick is the best eligible account; when its models don't
-  // match the preset's model filter, fall back to the first eligible member
-  // that does (the preset resolves a provider/model entry, not just a member).
+  // match the preset's model filter, re-run the strategy among the eligible
+  // members that DO have a matching model, so the preset resolves to the best
+  // provider/model entry (not just the first rotation-order model match).
   if (!model && preset.model && member) {
-    for (const alt of eligibleMembers(pool, cfg, rotCtx, state)) {
-      if (alt.credentialId === member.credentialId) continue;
+    const candidates = eligibleMembers(pool, cfg, rotCtx, state).filter((alt) => {
       const altAccount = cfg.accounts.find((a) => a.credentialId === alt.credentialId);
-      if (!altAccount) continue;
-      const altModel = findAccountModel(ctx.modelRegistry, altAccount, preset.model);
-      if (altModel) {
-        member = alt;
-        account = altAccount;
-        model = altModel;
-        break;
+      return !!altAccount && !!findAccountModel(ctx.modelRegistry, altAccount, preset.model);
+    });
+    if (candidates.length > 0) {
+      const alt = await selectForStrategy(pool, cfg, rotCtx, state, ctx, candidates);
+      if (alt) {
+        const altAccount = cfg.accounts.find((a) => a.credentialId === alt.credentialId);
+        const altModel = altAccount && findAccountModel(ctx.modelRegistry, altAccount, preset.model);
+        if (altAccount && altModel) {
+          member = alt;
+          account = altAccount;
+          model = altModel;
+        }
       }
     }
   }

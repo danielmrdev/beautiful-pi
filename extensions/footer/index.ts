@@ -418,13 +418,13 @@ export default function (pi: ExtensionAPI) {
 
 		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
 			let openAIUsage: OpenAIUsage | null = null;
-			let openAIUsageAt = 0;
+			let openAIUsageFetchedAt = 0;
 			let usageLoading = false;
 			let usageLastAttempt = 0;
 			let usageGeneration = 0;
 			let usageWasVisible = false;
 			let openCodeGoUsage: OpenCodeGoUsage | null = null;
-			let openCodeGoUsageAt = 0;
+			let openCodeGoUsageFetchedAt = 0;
 			let ocgLoading = false;
 			let ocgLastAttempt = 0;
 			let ocgGeneration = 0;
@@ -443,12 +443,12 @@ export default function (pi: ExtensionAPI) {
 						: null;
 					if (generation === usageGeneration) {
 						openAIUsage = next;
-						openAIUsageAt = next ? Date.now() : 0;
+						openAIUsageFetchedAt = next ? Date.now() : 0;
 					}
 				} catch {
 					if (generation === usageGeneration) {
 						openAIUsage = null;
-						openAIUsageAt = 0;
+						openAIUsageFetchedAt = 0;
 					}
 				} finally {
 					usageLoading = false;
@@ -462,7 +462,7 @@ export default function (pi: ExtensionAPI) {
 					if (usageWasVisible) {
 						usageGeneration++;
 						openAIUsage = null;
-						openAIUsageAt = 0;
+						openAIUsageFetchedAt = 0;
 						usageLastAttempt = 0;
 						usageWasVisible = false;
 					}
@@ -486,19 +486,19 @@ export default function (pi: ExtensionAPI) {
 					if (!wsId || !cookie) {
 						if (generation === ocgGeneration) {
 							openCodeGoUsage = null;
-							openCodeGoUsageAt = 0;
+							openCodeGoUsageFetchedAt = 0;
 						}
 						return;
 					}
 					const next = await fetchOpenCodeGoUsage(wsId, cookie);
 					if (generation === ocgGeneration) {
 						openCodeGoUsage = next;
-						openCodeGoUsageAt = next ? Date.now() : 0;
+						openCodeGoUsageFetchedAt = next ? Date.now() : 0;
 					}
 				} catch {
 					if (generation === ocgGeneration) {
 						openCodeGoUsage = null;
-						openCodeGoUsageAt = 0;
+						openCodeGoUsageFetchedAt = 0;
 					}
 				} finally {
 					ocgLoading = false;
@@ -512,7 +512,7 @@ export default function (pi: ExtensionAPI) {
 					if (ocgWasVisible) {
 						ocgGeneration++;
 						openCodeGoUsage = null;
-						openCodeGoUsageAt = 0;
+						openCodeGoUsageFetchedAt = 0;
 						ocgLastAttempt = 0;
 						ocgWasVisible = false;
 					}
@@ -552,9 +552,9 @@ export default function (pi: ExtensionAPI) {
 					const icons = getIcons();
 					let usageLabel = "";
 					if (openAIUsage) {
-						usageLabel = renderUsageSegments(openAIUsageSegments(openAIUsage, openAIUsageAt), theme);
+						usageLabel = renderUsageSegments(openAIUsageSegments(openAIUsage, openAIUsageFetchedAt), theme);
 					} else if (openCodeGoUsage) {
-						usageLabel = renderUsageSegments(openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageAt), theme);
+						usageLabel = renderUsageSegments(openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageFetchedAt), theme);
 					}
 					const usage = usageLabel
 						? theme.fg("accent", icons.quota) + " " + usageLabel

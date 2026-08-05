@@ -70,6 +70,16 @@ export interface EligibleMember {
 }
 
 /**
+ * Why a credential fails the shared eligibility predicate. The chain layer
+ * adds its own "cooling down" on top of this set.
+ */
+export type MemberUnavailableReason =
+  | "no account entry"
+  | "already attempted"
+  | "not authenticated"
+  | "restricted in this project";
+
+/**
  * The first reason a credential cannot be routed to right now, or undefined
  * when it is eligible: missing account entry, already attempted for this
  * request, unauthenticated, or project-restricted. Cooldown is deliberately
@@ -80,7 +90,7 @@ export function eligibilityReason(
   cfg: AccountConfig,
   ctx: RotationContext,
   state: RotationState,
-): string | undefined {
+): MemberUnavailableReason | undefined {
   if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return "no account entry";
   if (state.attempted.has(credentialId)) return "already attempted";
   if (!ctx.authConfigured(credentialId)) return "not authenticated";

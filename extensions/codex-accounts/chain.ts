@@ -15,9 +15,11 @@ import {
   isCooldownActive,
   nextEligibleMember,
   type EligibleMember,
+  type MemberUnavailableReason,
   type RotationContext,
   type RotationState,
 } from "./rotation.ts";
+import { resolvePoolById } from "./store.ts";
 
 export interface ChainWalkResult {
   member: EligibleMember;
@@ -29,9 +31,21 @@ export interface ChainWalkResult {
   skipped: string[];
 }
 
-function poolById(cfg: AccountConfig, poolId: string): CodexPool | undefined {
-  return (cfg.pools ?? []).find((p) => p.id === poolId);
-}
+/**
+ * How a pool target picks its member during a chain walk. The sync replay
+ * picker is `nextEligibleMember`; `/codex chain use` injects the pool's own
+ * strategy-aware selection (quota-first/scheduled/custom/round-robin).
+ */
+export type PoolMemberPicker = (
+  pool: CodexPool,
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+  now: number,
+) => EligibleMember | undefined | Promise<EligibleMember | undefined>;
+
+/** Chain-layer reason: the shared ones plus cooldown. */
+export type ChainMemberUnavailableReason = MemberUnavailableReason | "cooling down";
 
 /**
  * Why a single credential cannot be used right now; undefined when usable.
@@ -44,7 +58,7 @@ export function memberUnavailableReason(
   ctx: RotationContext,
   state: RotationState,
   now: number = Date.now(),
-): string | undefined {
+): ChainMemberUnavailableReason | undefined {
   const reason = eligibilityReason(credentialId, cfg, ctx, state);
   if (reason) return reason;
   if (isCooldownActive(state, credentialId, now)) return "cooling down";
@@ -63,14 +77,22 @@ export function chainTargetStatus(
     const reason = memberUnavailableReason(target.credentialId, cfg, ctx, state, now);
     return `account ${target.credentialId}${reason ? `: ${reason}` : ": eligible"}`;
   }
-  const pool = poolById(cfg, target.poolId);
+  const pool = resolvePoolById(cfg, target.poolId);
   if (!pool) return `pool ${target.poolId}: not found`;
   if (!pool.enabled) return `pool ${pool.name}: disabled`;
   if (pool.credentialIds.length === 0) return `pool ${pool.name}: no members`;
-  if (allEligibleMembers(pool, cfg, ctx, state, now).length > 0) return `pool ${pool.name}: eligible`;
+  if (allEligibleMembers(pool, cfg, ctx, state, now).length > 0) {
+    // Quota-first pools live-check exhaustion at use time; the status line
+    // cannot see the network, so it says so instead of claiming "eligible".
+    const note =
+      pool.strategy === "quota-first"
+        ? " (strategy: quota-first — live quota check on use)"
+        : "";
+    return `pool ${pool.name}: eligible${note}`;
+  }
   const reasons = pool.credentialIds
     .map((id) => memberUnavailableReason(id, cfg, ctx, state, now))
-    .filter((r): r is string => r !== undefined);
+    .filter((r): r is ChainMemberUnavailableReason => r !== undefined);
   const summary = [...new Set(reasons)].join(", ");
   return `pool ${pool.name}: no eligible member${summary ? ` (${summary})` : ""}`;
 }
@@ -106,19 +128,22 @@ export function chainPoolForCredential(
   );
 }
 
-/** Walk a chain from its last-used target (or the first target on a fresh
- * chain) and return the first eligible member. A pool target rotates
- * round-robin past previously used/attempted members before the walk moves to
- * the next target, so retry replay keeps chain progress and never revisits a
- * failed target. Never mutates the chain or the pools.
+/**
+ * Walk a chain from its last-used target (or the first target on a fresh
+ * chain) and return the first eligible member, picking each pool target's
+ * member through `pick`. Pool targets rotate past previously used/attempted
+ * members before the walk moves to the next target, so retry replay keeps
+ * chain progress and never revisits a failed target. Never mutates the
+ * chain or the pools.
  */
-export function nextChainMember(
+export async function walkChain(
   chain: CodexChain,
   cfg: AccountConfig,
   ctx: RotationContext,
   state: RotationState,
-  now: number = Date.now(),
-): ChainWalkResult | undefined {
+  now: number,
+  pick: PoolMemberPicker,
+): Promise<ChainWalkResult | undefined> {
   if (!chain.enabled) return undefined;
   const targets = chain.targets;
   if (targets.length === 0) return undefined;
@@ -127,12 +152,12 @@ export function nextChainMember(
   for (let i = start; i < targets.length; i++) {
     const target = targets[i];
     if (target.kind === "pool") {
-      const pool = poolById(cfg, target.poolId);
+      const pool = resolvePoolById(cfg, target.poolId);
       if (!pool || !pool.enabled || pool.credentialIds.length === 0) {
         skipped.push(chainTargetStatus(target, cfg, ctx, state, now));
         continue;
       }
-      const member = nextEligibleMember(pool, cfg, ctx, state, now);
+      const member = await pick(pool, cfg, ctx, state, now);
       if (!member) {
         skipped.push(chainTargetStatus(target, cfg, ctx, state, now));
         continue;
@@ -146,4 +171,20 @@ export function nextChainMember(
     return { member: { credentialId: target.credentialId, index: -1 }, targetIndex: i, skipped };
   }
   return undefined;
+}
+
+/**
+ * Failover replay walk: deterministic round-robin per pool target (fast,
+ * latency-critical; the #5 decision that rate-limit failover stays
+ * round-robin is preserved). The strategy-aware variant lives in commands.ts
+ * and injects `selectForStrategy` as the picker.
+ */
+export function nextChainMember(
+  chain: CodexChain,
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+  now: number = Date.now(),
+): Promise<ChainWalkResult | undefined> {
+  return walkChain(chain, cfg, ctx, state, now, nextEligibleMember);
 }

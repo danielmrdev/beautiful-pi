@@ -1012,3 +1012,77 @@ describe("/codex chain use with project overrides", () => {
     assert.equal(cfg.chains![0].lastUsedTargetIndex, 0, "chain progress persists (chain not overridden)");
   });
 });
+
+describe("/codex pool use with project overrides", () => {
+  test("uses the overridden member list and leaves the global pointer untouched", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    await env.handler("project pool prod personal");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+    await env.handler("pool use prod");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "override member activated");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.pools![0].lastUsedIndex, -1, "global pointer untouched by override use");
+  });
+});
+
+describe("/codex preset activate fallback is strategy-aware", () => {
+  function stubUsageByAccount(map: Record<string, number>): void {
+    globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string> }) => {
+      const token = init.headers["Authorization"].replace("Bearer ", "");
+      const used = map[token] ?? 50;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          rate_limit: {
+            primary_window: { limit_window_seconds: 5 * 3600, used_percent: used, reset_at: Math.floor(Date.now() / 1000) + 3600 },
+          },
+        }),
+      };
+    }) as unknown as typeof fetch;
+  }
+
+  function writeCredential(id: string, token: string): void {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, "auth.json");
+    let existing: Record<string, unknown> = {};
+    try { existing = JSON.parse(require("node:fs").readFileSync(path, "utf-8")); } catch {}
+    existing[id] = { type: "oauth", access: token, expires: Math.floor(Date.now() / 1000) + 7200 };
+    require("node:fs").writeFileSync(path, JSON.stringify(existing));
+  }
+
+  test("re-picks by strategy among model-matching members, not rotation order", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    await env.handler("account add backup");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    env.auth["openai-codex-4"] = { configured: true };
+    await env.handler("pool create prod work personal backup");
+    await env.handler("pool strategy prod quota-first");
+    // Only work and backup carry the preset's model; personal is healthiest
+    // overall (10%) but lacks it, forcing the model-filtered re-pick.
+    env.models = [
+      { id: "claude", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+      { id: "claude", provider: "openai-codex-4" },
+    ];
+    stubUsageByAccount({ "tok-work": 90, "tok-personal": 10, "tok-backup": 30 });
+    writeCredential("openai-codex-2", "tok-work");
+    writeCredential("openai-codex-3", "tok-personal");
+    writeCredential("openai-codex-4", "tok-backup");
+    await env.handler("preset create claude prod model claude");
+    await env.handler("preset activate claude");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-4", "strategy-best model match activated (backup 30% < work 90%)");
+  });
+});
