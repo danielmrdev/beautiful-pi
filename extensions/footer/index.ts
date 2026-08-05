@@ -215,6 +215,22 @@ function fmt(n: number): string {
 	return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
+// ── Session title narrow-mode line ───────────────────────────────────────────
+
+// Title on its own line, indented to line 1's content column (single space
+// before the icon), truncated with … if still too long.
+export function renderTitleLine(title: string, width: number, theme: any): string {
+	const prefix = " ";
+	const avail = Math.max(0, width - strWidth(prefix) - 1); // room for …
+	let cut = "";
+	for (const ch of title) {
+		if (strWidth(cut + ch) > avail) break;
+		cut += ch;
+	}
+	const shown = strWidth(title) > avail ? cut + "\u2026" : title;
+	return truncateToWidth(prefix + theme.fg("muted", shown), width);
+}
+
 // ── Render a full-width line (no background) ─────────────────────────────────
 
 function bgLine(_theme: any, content: string, width: number): string {
@@ -383,17 +399,7 @@ export default function (pi: ExtensionAPI) {
 					} else {
 						widgetLines.push(truncateToWidth(prefixStr, width));
 						if (sessionTitle) {
-							// Title on its own line, truncated with … if still too long
-							const avail = Math.max(0, width - 3); // "  " + …
-							let cut = "";
-							for (const ch of sessionTitle) {
-								if (strWidth(cut + ch) > avail) break;
-								cut += ch;
-							}
-							const shown = strWidth(sessionTitle) > avail
-								? cut + "\u2026"
-								: sessionTitle;
-							widgetLines.push(truncateToWidth("  " + theme.fg("muted", shown), width));
+							widgetLines.push(renderTitleLine(sessionTitle, width, theme));
 						}
 					}
 
