@@ -8,9 +8,11 @@
  *
  * Flow:
  *   1. `pnpm pack` → tarball of the current tree.
- *   2. npm-install the tarball (with pi's --legacy-peer-deps flag) into a
- *      fresh temp agent npm dir → resolves ALL dependencies exactly,
- *      including the pi-blackhole fork pin.
+ *   2. npm-install the tarball into a fresh temp agent npm dir with pi's
+ *      exact command (npm install, no --legacy-peer-deps) → resolves ALL
+ *      dependencies strictly, including the pi-blackhole fork pin. The
+ *      pi-rtk-optimizer peer-range gap for pi 0.83 is closed by the npm
+ *      `overrides` field in package.json, so this must succeed without flags.
  *   3. Assert every package.json "pi" manifest path (extensions, prompts,
  *      themes) resolves relative to the installed package, and every direct
  *      dependency is present.
@@ -64,13 +66,14 @@ try {
     ok(`tarball: ${TARBALL}`);
   }
 
-  // 2. Install tarball + deps into a fresh agent npm dir (pi uses
-  // --legacy-peer-deps for managed installs).
+  // 2. Install tarball + deps into a fresh agent npm dir, replicating pi's
+  // own managed install (npm install, no --legacy-peer-deps). Any strict
+  // peer-resolution gap here is a release blocker (see issue #18).
   mkdirSync(npmDir, { recursive: true });
-  ok("installing tarball + dependencies (npm, --legacy-peer-deps)");
+  ok("installing tarball + dependencies (npm, strict peer resolution)");
   const install = run(
     "npm",
-    ["install", TARBALL, "--legacy-peer-deps", "--no-audit", "--no-fund"],
+    ["install", TARBALL, "--no-audit", "--no-fund"],
     { cwd: npmDir, timeout: 300_000 },
   );
   if (install.timedOut) {

@@ -52,6 +52,14 @@
     "@earendil-works/pi-coding-agent": "^0.83.0",
     "@earendil-works/pi-tui": "^0.83.0"
   },
+  "overrides": {
+    "pi-rtk-optimizer": {
+      "peerDependencies": {
+        "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.83.0",
+        "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.78.0 || ^0.79.0 || ^0.80.0 || ^0.83.0"
+      }
+    }
+  },
   "devDependencies": {
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
