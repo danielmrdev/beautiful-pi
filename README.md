@@ -80,21 +80,23 @@ One `pi install beautiful-pi` enables this curated package catalog automatically
 no second package install is needed. Upstream packages remain normal npm
 dependencies, pinned exactly in `package.json`:
 
-| Category | Integration | Upstream docs |
-| --- | --- | --- |
-| Compaction | [Codex native compaction](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
-| Context | [Hypa](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa), [RTK Optimizer](https://github.com/MasuRii/pi-rtk-optimizer) | [Hypa README](https://github.com/Hypabolic/Hypa#readme), [RTK README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
-| Workflows | [Plannotator](https://github.com/backnotprop/plannotator), [Subagents](https://github.com/tintinweb/pi-subagents) | [Plannotator docs](https://github.com/backnotprop/plannotator), [Subagents README](https://github.com/tintinweb/pi-subagents#readme) |
-| Interaction | [Ask User Question](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question), [`/btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | [Ask User README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme), [Btw README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
-| Memory | [Pi Blackhole](https://github.com/k0valik/pi-blackhole) | [README](https://github.com/k0valik/pi-blackhole#readme) |
-| Themes | Tokyo Night, Tokyo Night Nord | [Theme docs](#themes) |
+| Category | Bundled package | Version | Repo |
+| --- | --- | ---: | --- |
+| Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.3 | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
+| Compaction | `pi-blackhole` (fork) | 0.4.3+`4700d7b` | [fork](https://github.com/danielmrdev/pi-blackhole) — [upstream](https://github.com/k0valik/pi-blackhole) |
+| Context | `@hypabolic/pi-hypa` | 0.1.12 | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
+| Context | `pi-rtk-optimizer` | 0.9.0 | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
+| Workflows | `@plannotator/pi-extension` | 0.25.1 | [repo](https://github.com/backnotprop/plannotator) |
+| Workflows | `@tintinweb/pi-subagents` | 0.14.3 | [repo](https://github.com/tintinweb/pi-subagents) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.4.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.4.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Themes | `tokyo-night`, `tokyo-night-nord` (bundled themes) | — | [theme docs](#themes) |
 
-The package manifest lists each selected extension, prompt, and theme explicitly;
-`skills: []` records that this catalog currently includes no skills. Its `../`
-entries target normal dependencies hoisted beside the package by Pi's managed npm
-install; bundled `node_modules/` paths are intentionally not used. No wildcard
-discovery is used. Curated themes, Piolium, and Agent Browser stay independent
-packages and are not included. See
+`pi-blackhole` is pinned to a temporary provider-aware fork
+(`github:danielmrdev/pi-blackhole#4700d7b`, issue #7) while the
+`skipForProviders` capability lands upstream
+([k0valik/pi-blackhole#47](https://github.com/k0valik/pi-blackhole/pull/47));
+switching back to the official release is a one-line dependency bump. See
 [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership and licenses.
 
 ### Provider and compaction commands
@@ -103,6 +105,9 @@ beautiful-pi manages multiple Codex subscriptions on top of Pi's built-in
 provider auth. Pi owns the OAuth credential store (`~/.pi/agent/auth.json`);
 this package never writes it. In an interactive session:
 
+Typing `/codex ` opens the editor autocomplete with the available sections,
+subcommands, and existing account/pool/chain/preset refs.
+
 ```text
 /codex account add <label>   create a new Codex account (e.g. work, personal)
 /codex account login [ref]   authenticate the account (run the shown /login)
@@ -110,18 +115,52 @@ this package never writes it. In an interactive session:
 /codex account switch [ref]  switch the active model to the account
 /codex account list          list accounts with auth status
 /codex account status [ref]  detailed status for one account
+/codex account quota [ref]   inspect quota windows (5h/7d usage) per account
 /codex account remove [ref]  remove the account configuration entry
 /codex account migrate       run legacy multi-pass config migration
 /codex pool create <name> <member...>   create a pool from account refs
 /codex pool list            list pools with members
-/codex pool inspect <pool>  per-member eligibility (auth, cooldown, project)
+/codex pool inspect <pool>  per-member eligibility (auth, cooldown, project, strategy)
 /codex pool enable <pool>   re-enable a pool
 /codex pool disable <pool>  disable a pool (no rotation/failover)
 /codex pool delete <pool>   remove the pool
 /codex pool add <pool> <member...>      add members
 /codex pool remove <pool> <member...>   remove members
-/codex pool use <pool>      round-robin: activate the next eligible member
+/codex pool use <pool>      select a member (round-robin, quota-first, scheduled, or custom)
+/codex pool strategy <pool> <round-robin|quota-first|scheduled|custom>
+/codex pool schedule <pool> [<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]
+/codex pool schedule clear <pool>       remove the schedule
+/codex pool selector <pool> <command>   custom member selector (outputs a member ref)
+/codex pool selector clear <pool>       remove the selector
+/codex chain create <name> <target...>  ordered fallback chain (targets: pool or account refs)
+/codex chain list           list chains with targets
+/codex chain inspect <chain>  per-target eligibility
+/codex chain use <chain>    walk targets (each pool uses its strategy) and activate
+/codex chain enable <chain> / disable <chain> / delete <chain>
+/codex chain add <chain> <target...> / remove <chain> <target...>
+/codex preset create <name> <pool> [model <prefix>]   named routing preset
+/codex preset list / inspect <preset>
+/codex preset activate <preset>   resolve the best eligible member and switch to it
+/codex preset enable <preset> / disable <preset> / delete <preset>
+/codex project allow <account...>  restrict this project to the given accounts
+/codex project allow all          clear the project account restriction
+/codex project pool <name> <member...>   override a global pool's members for this project
+/codex project pool enable|disable|clear <name>
+/codex project chain <name> <target...>  override a global chain's targets for this project
+/codex project chain enable|disable|clear <name>
+/codex project show           effective (global + project) config
 ```
+
+`days <spec>` accepts `everyday | weekdays | weekend | sun,mon,... | mon-fri ranges`;
+`roles` pairs a member with `primary|backup` (backups are used when no primary is
+eligible). `ref`/`target` matches an account by label, credential id
+(`openai-codex`, `openai-codex-2`), or id. Pool strategies: `round-robin`
+(rotate to the next eligible member), `quota-first` (healthiest member by quota
+headroom, live check on use), `scheduled` (time/day windows with primary/backup
+roles), and `custom` (shell selector fed the eligible members on stdin). Chains
+define ordered fallback targets across pools and accounts; presets pin a named
+pool + optional model prefix; project overrides apply only in trusted projects
+(stored in `.pi/beautiful-pi.json`).
 
 `ref` matches an account by label, credential id (`openai-codex`, `openai-codex-2`), or
 id. Adding an account registers its provider with Pi's `/login`, so

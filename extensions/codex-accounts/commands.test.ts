@@ -9,7 +9,7 @@ import { mkdirSync, rmSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fakePi } from "../test-helpers.ts";
-import { registerCodexCommand } from "./commands.ts";
+import { registerCodexCommand, codexArgumentCompletions } from "./commands.ts";
 import { loadGlobalAccountConfig, loadProjectAccountConfig } from "./store.ts";
 
 let tmpHome: string;
@@ -253,6 +253,92 @@ describe("/codex account migrate + usage", () => {
     const env = makeEnv();
     await env.handler("bogus list");
     assert.ok(lastNotify(env).includes("subcommand"));
+  });
+});
+
+describe("/codex argument completions", () => {
+  const values = (items: ReturnType<typeof codexArgumentCompletions>) => (items ?? []).map((i) => i.value);
+
+  /** Mark every current account as authenticated + provide models (pool create needs this). */
+  function authenticateAll(env: FakeEnv): void {
+    const cfg = loadGlobalAccountConfig();
+    env.models = cfg.accounts.map((a) => ({ provider: a.credentialId, id: "gpt-5.5" }));
+    env.auth = Object.fromEntries(cfg.accounts.map((a) => [a.credentialId, { configured: true }]));
+  }
+
+  test("sections appear after /codex ", () => {
+    assert.deepEqual(values(codexArgumentCompletions("")), ["account", "pool", "chain", "preset", "project"]);
+    assert.deepEqual(values(codexArgumentCompletions(" ")), ["account", "pool", "chain", "preset", "project"]);
+  });
+
+  test("section filtered by partial prefix", () => {
+    assert.deepEqual(values(codexArgumentCompletions("acc")), ["account"]);
+    assert.deepEqual(values(codexArgumentCompletions("po")), ["pool"]);
+    assert.equal(codexArgumentCompletions("xyz"), null, "no matching section → no dropdown");
+  });
+
+  test("section subcommands appear after trailing space", () => {
+    const items = values(codexArgumentCompletions("account "));
+    assert.ok(items.includes("account add"), "add listed");
+    assert.ok(items.includes("account switch"), "switch listed");
+    assert.ok(items.includes("account quota"), "quota listed");
+  });
+
+  test("subcommands filtered by partial prefix", () => {
+    assert.deepEqual(values(codexArgumentCompletions("account sw")), ["account switch"]);
+    assert.deepEqual(values(codexArgumentCompletions("pool us")), ["pool use"]);
+    assert.equal(codexArgumentCompletions("pool nope"), null);
+  });
+
+  test("pool/chain/preset/project subcommands", () => {
+    assert.ok(values(codexArgumentCompletions("pool ")).includes("pool create"));
+    assert.ok(values(codexArgumentCompletions("chain ")).includes("chain remove"));
+    assert.ok(values(codexArgumentCompletions("preset ")).includes("preset activate"));
+    assert.ok(values(codexArgumentCompletions("project ")).includes("project show"));
+  });
+
+  test("unknown section with args → null", () => {
+    assert.equal(codexArgumentCompletions("foo bar"), null);
+  });
+
+  test("account refs completed for switch/status/quota", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    assert.deepEqual(values(codexArgumentCompletions("account switch ")), ["account switch work", "account switch personal"]);
+    assert.deepEqual(values(codexArgumentCompletions("account switch wo")), ["account switch work"]);
+    assert.deepEqual(values(codexArgumentCompletions("account status personal")), ["account status personal"]);
+  });
+
+  test("pool/chain/preset names completed as refs", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    authenticateAll(env);
+    await env.handler("pool create main work personal");
+    await env.handler("pool create staging work");
+    await env.handler("chain create west main work");
+    await env.handler("preset create fast main");
+    assert.deepEqual(values(codexArgumentCompletions("pool use ma")), ["pool use main"]);
+    assert.deepEqual(values(codexArgumentCompletions("pool inspect ")), ["pool inspect main", "pool inspect staging"]);
+    assert.deepEqual(values(codexArgumentCompletions("chain use we")), ["chain use west"]);
+    assert.deepEqual(values(codexArgumentCompletions("preset activate fa")), ["preset activate fast"]);
+  });
+
+  test("project pool/chain complete existing names", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    authenticateAll(env);
+    await env.handler("pool create main work");
+    assert.deepEqual(values(codexArgumentCompletions("project pool ma")), ["project pool main"]);
+  });
+
+  test("wired into the registered /codex command", () => {
+    const pi: any = fakePi();
+    registerCodexCommand(pi);
+    const cmd = pi.commands.get("codex");
+    assert.equal(typeof cmd.getArgumentCompletions, "function", "/codex exposes getArgumentCompletions");
+    assert.deepEqual(cmd.getArgumentCompletions("pool us").map((i: any) => i.value), ["pool use"]);
   });
 });
 

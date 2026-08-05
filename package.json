@@ -1,14 +1,14 @@
 {
   "name": "beautiful-pi",
   "version": "0.1.0",
-  "description": "Beautiful UI extensions and themes for pi — footer, banner, themes, and Nerd Fonts support",
+  "description": "Beautiful UI extensions and themes for pi \u2014 footer, banner, themes, and Nerd Fonts support",
   "keywords": [
     "pi-package",
     "pi",
     "coding-agent",
     "terminal-ui"
   ],
-  "author": "Daniel Muñoz <github@danielmr.dev>",
+  "author": "Daniel Mu\u00f1oz <github@danielmr.dev>",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "pack:check": "pnpm pack --dry-run",
     "gitleaks:scan": "gitleaks detect --no-git --verbose -s .",
-    "gitleaks:staged": "gitleaks protect --staged --verbose"
+    "gitleaks:staged": "gitleaks protect --staged --verbose",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@ogulcancelik/pi-codex-compaction": "0.1.3",

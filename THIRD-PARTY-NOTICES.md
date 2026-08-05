@@ -12,11 +12,19 @@ dependencies. They remain owned and maintained by their upstream authors.
 | [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.4.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
 | [`pi-rtk-optimizer`](https://github.com/MasuRii/pi-rtk-optimizer) | 0.9.0 | MasuRii | MIT | [README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
 | [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.4.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
-| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.4.3 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
+| [`pi-blackhole`](https://github.com/danielmrdev/pi-blackhole) (fork of [k0valik/pi-blackhole](https://github.com/k0valik/pi-blackhole)) | 0.4.3 (fork `4700d7b`) | k0valik (upstream), danielmrdev (fork) | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
 This table covers all eight direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
+
+`pi-blackhole` is pinned to a temporary provider-aware fork
+(`github:danielmrdev/pi-blackhole#4700d7b`, issue #7) while the
+`skipForProviders` capability lands upstream
+([k0valik/pi-blackhole#47](https://github.com/k0valik/pi-blackhole/pull/47));
+switching back to the official release is a one-line dependency bump. The fork
+is a delta over the MIT-licensed upstream — the license text below applies to
+both.
 
 Transitive npm dependencies are not redistributed in the beautiful-pi tarball.
 Pi's npm install keeps each transitive package's own metadata and license file

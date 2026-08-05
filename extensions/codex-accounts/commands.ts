@@ -17,6 +17,7 @@
  */
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 // Node builtins follow the repo convention: require(), not import.
 const { exec } = require("node:child_process") as typeof import("node:child_process");
 import {
@@ -1420,6 +1421,140 @@ async function cmdProjectShow(pi: ExtensionAPI, ctx: ExtensionCommandContext): P
   sendOutput(pi, lines);
 }
 
+// ── Argument completions ─────────────────────────────────────────────────────
+
+/** Ref kind completed for the first positional argument after `<section> <sub>`. */
+type RefKind = "account" | "pool" | "chain" | "preset";
+
+interface SubSpec {
+  name: string;
+  desc: string;
+  ref?: RefKind;
+}
+
+/** Static command tree backing the `/codex ` autocomplete dropdown. */
+const SECTION_SPECS: Array<{ name: string; desc: string; subs: SubSpec[] }> = [
+  {
+    name: "account", desc: "manage Codex accounts", subs: [
+      { name: "add", desc: "create a new Codex account" },
+      { name: "login", desc: "authenticate the account", ref: "account" },
+      { name: "logout", desc: "remove the stored credential", ref: "account" },
+      { name: "remove", desc: "remove the account configuration entry", ref: "account" },
+      { name: "switch", desc: "switch the active model to the account", ref: "account" },
+      { name: "list", desc: "list accounts with auth status" },
+      { name: "status", desc: "detailed status for one account", ref: "account" },
+      { name: "quota", desc: "inspect quota windows per account", ref: "account" },
+      { name: "migrate", desc: "run legacy multi-pass config migration" },
+    ],
+  },
+  {
+    name: "pool", desc: "manage account pools", subs: [
+      { name: "create", desc: "create a pool from account refs" },
+      { name: "list", desc: "list pools with members" },
+      { name: "inspect", desc: "per-member eligibility", ref: "pool" },
+      { name: "enable", desc: "re-enable a pool", ref: "pool" },
+      { name: "disable", desc: "disable a pool (no rotation/failover)", ref: "pool" },
+      { name: "delete", desc: "remove the pool", ref: "pool" },
+      { name: "add", desc: "add members", ref: "pool" },
+      { name: "remove", desc: "remove members", ref: "pool" },
+      { name: "use", desc: "select a member by strategy", ref: "pool" },
+      { name: "strategy", desc: "set round-robin|quota-first|scheduled|custom", ref: "pool" },
+      { name: "schedule", desc: "set time/day windows", ref: "pool" },
+      { name: "selector", desc: "custom member selector", ref: "pool" },
+    ],
+  },
+  {
+    name: "chain", desc: "manage fallback chains", subs: [
+      { name: "create", desc: "create an ordered fallback chain" },
+      { name: "list", desc: "list chains with targets" },
+      { name: "inspect", desc: "per-target eligibility", ref: "chain" },
+      { name: "use", desc: "walk targets and activate", ref: "chain" },
+      { name: "enable", desc: "re-enable a chain", ref: "chain" },
+      { name: "disable", desc: "disable a chain", ref: "chain" },
+      { name: "delete", desc: "remove the chain", ref: "chain" },
+      { name: "add", desc: "append targets", ref: "chain" },
+      { name: "remove", desc: "remove targets", ref: "chain" },
+    ],
+  },
+  {
+    name: "preset", desc: "manage routing presets", subs: [
+      { name: "create", desc: "create a named routing preset" },
+      { name: "list", desc: "list presets" },
+      { name: "inspect", desc: "inspect a preset", ref: "preset" },
+      { name: "activate", desc: "resolve best eligible member and switch", ref: "preset" },
+      { name: "enable", desc: "re-enable a preset", ref: "preset" },
+      { name: "disable", desc: "disable a preset", ref: "preset" },
+      { name: "delete", desc: "delete a preset", ref: "preset" },
+    ],
+  },
+  {
+    name: "project", desc: "trusted-project overrides", subs: [
+      { name: "allow", desc: "restrict project to accounts (or 'all')", ref: "account" },
+      { name: "pool", desc: "override a pool for this project", ref: "pool" },
+      { name: "chain", desc: "override a chain for this project", ref: "chain" },
+      { name: "show", desc: "effective (global + project) config" },
+    ],
+  },
+];
+
+/** Existing refs of a kind, from the loaded account config. */
+function refCompletions(kind: RefKind): string[] {
+  const cfg = loadGlobalAccountConfig();
+  switch (kind) {
+    case "account": return cfg.accounts.map((a) => a.label);
+    case "pool": return listPools(cfg).map((p) => p.name);
+    case "chain": return (cfg.chains ?? []).map((c) => c.name);
+    case "preset": return (cfg.presets ?? []).map((p) => p.name);
+  }
+}
+
+function startsWithFold(value: string, prefix: string): boolean {
+  return value.toLowerCase().startsWith(prefix.toLowerCase());
+}
+
+/**
+ * Autocomplete items for the `/codex ` argument: sections, subcommands, then
+ * the first positional ref (account labels, pool/chain/preset names). The
+ * editor passes the whole text after `/codex `, so items carry the full
+ * replacement (`account switch`) — selecting one keeps the section typed so
+ * far. Returns null when nothing matches (the dropdown stays hidden).
+ */
+export function codexArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+  const trailingSpace = /\s$/.test(argumentPrefix);
+  const tokens = argumentPrefix.trim().split(/\s+/).filter(Boolean);
+
+  // Completing the section: "/codex " or "/codex acc".
+  if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
+    const sectionPrefix = tokens[0] ?? "";
+    const items = SECTION_SPECS
+      .filter((s) => startsWithFold(s.name, sectionPrefix))
+      .map((s) => ({ value: s.name, label: s.name, description: s.desc }));
+    return items.length > 0 ? items : null;
+  }
+  const section = tokens[0].toLowerCase();
+  const spec = SECTION_SPECS.find((s) => s.name === section);
+  if (!spec) return null;
+
+  // Completing the subcommand: "/codex account" (trailing space) or "/codex account sw".
+  if (tokens.length === 1 || (tokens.length === 2 && !trailingSpace)) {
+    const subPrefix = tokens.length === 1 ? "" : tokens[1];
+    const items = spec.subs
+      .filter((sub) => startsWithFold(sub.name, subPrefix))
+      .map((sub) => ({ value: `${section} ${sub.name}`, label: `${section} ${sub.name}`, description: sub.desc }));
+    return items.length > 0 ? items : null;
+  }
+
+  // Completing the first positional ref: "/codex pool use" (trailing space) or "/codex pool use prod".
+  const sub = tokens[1].toLowerCase();
+  const subSpec = spec.subs.find((s) => s.name === sub);
+  if (!subSpec?.ref) return null;
+  const refPrefix = tokens.slice(2).join(" ");
+  const items = refCompletions(subSpec.ref)
+    .filter((ref) => startsWithFold(ref, refPrefix))
+    .map((ref) => ({ value: `${section} ${sub} ${ref}`, label: `${section} ${sub} ${ref}`, description: subSpec.desc }));
+  return items.length > 0 ? items : null;
+}
+
 // ── Command registration ─────────────────────────────────────────────────────
 
 function tokenize(args: string): string[] {
@@ -1429,6 +1564,7 @@ function tokenize(args: string): string[] {
 export function registerCodexCommand(pi: ExtensionAPI): void {
   pi.registerCommand("codex", {
     description: "Manage Codex accounts and pools (add, authenticate, switch, rotate, failover)",
+    getArgumentCompletions: (prefix: string) => codexArgumentCompletions(prefix),
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const [section, sub, ...rest] = tokenize(args);
       if (section === "account") {

@@ -3,5 +3,6 @@ node_modules/
 # Internal development docs — not for public repo
 docs/
 
-# Pith ADE 
-.pith
+# Pith ADE artifacts (memory/plans) and packed tarballs
+.pith/
+*.tgz

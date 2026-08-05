@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `/codex` argument autocomplete: typing `/codex ` shows sections, subcommands,
+  and existing account/pool/chain/preset refs in the editor dropdown.
 - `/codex account` command surface: add, authenticate, log out, remove, switch,
   inspect, and migrate Codex subscriptions on top of Pi's OAuth credential store.
 - Provider adapter registry with a Codex adapter — the seam for future
