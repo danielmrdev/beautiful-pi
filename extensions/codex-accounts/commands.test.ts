@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fakePi } from "../test-helpers.ts";
 import { registerCodexCommand } from "./commands.ts";
-import { loadGlobalAccountConfig } from "./store.ts";
+import { loadGlobalAccountConfig, loadProjectAccountConfig } from "./store.ts";
 
 let tmpHome: string;
 let tmpProject: string;
@@ -31,6 +31,7 @@ after(() => {
 beforeEach(() => {
   rmSync(join(tmpHome, ".pi", "agent", "beautiful-pi.json"), { force: true });
   rmSync(join(tmpHome, ".pi", "agent", "auth.json"), { force: true });
+  rmSync(join(tmpProject, ".pi", "beautiful-pi.json"), { force: true });
 });
 
 interface FakeEnv {
@@ -704,5 +705,287 @@ describe("/codex pool use with strategies", () => {
     await env.handler("pool use prod");
     assert.ok(env.notifications.some((n) => n.msg.includes("no selector configured")), "warning shown");
     assert.equal(env.setModelCalls[0].provider, "openai-codex-2");
+  });
+});
+
+describe("/codex chain", () => {
+  async function withChainPool(env: FakeEnv & { handler: (a: string) => Promise<void> }): Promise<void> {
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    await env.handler("pool create dev personal");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+  }
+
+  test("create stores ordered targets and rejects unknown refs", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("chain create primary prod openai-codex-2");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.chains!.length, 1);
+    assert.equal(cfg.chains![0].name, "primary");
+    assert.equal(cfg.chains![0].targets.length, 2);
+    assert.deepEqual(cfg.chains![0].targets[0], { kind: "pool", poolId: cfg.pools![0].id });
+    await env.handler("chain create secondary prod ghost");
+    assert.ok(lastNotify(env).includes("ghost"), "unknown target rejected");
+    assert.equal(loadGlobalAccountConfig().chains!.length, 1, "nothing saved on failure");
+  });
+
+  test("list and inspect show targets with per-target status", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("chain create primary prod openai-codex-2");
+    await env.handler("chain list");
+    const list = env.sent.at(-1)?.content as string;
+    assert.ok(list.includes("prod"));
+    await env.handler("chain inspect primary");
+    const inspect = env.sent.at(-1)?.content as string;
+    assert.ok(inspect.includes("pool prod: eligible"), "pool target status");
+    assert.ok(inspect.includes("openai-codex-2"), "account target listed");
+  });
+
+  test("enable, disable, delete, add, remove", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("chain create primary prod");
+    await env.handler("chain disable primary");
+    assert.equal(loadGlobalAccountConfig().chains![0].enabled, false);
+    await env.handler("chain enable primary");
+    assert.equal(loadGlobalAccountConfig().chains![0].enabled, true);
+    await env.handler("chain add primary dev");
+    assert.equal(loadGlobalAccountConfig().chains![0].targets.length, 2);
+    await env.handler("chain remove primary dev");
+    assert.equal(loadGlobalAccountConfig().chains![0].targets.length, 1);
+    await env.handler("chain delete primary");
+    assert.equal((loadGlobalAccountConfig().chains ?? []).length, 0);
+  });
+
+  test("use walks the chain and activates the first eligible member", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("chain create primary prod openai-codex-3");
+    await env.handler("chain use primary");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "first member of first pool target");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.chains![0].lastUsedTargetIndex, 0, "chain progress persisted");
+    assert.equal(cfg.pools![0].lastUsedIndex, 0, "pool pointer persisted");
+  });
+
+  test("use skips a disabled pool target and falls through the chain", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("pool disable prod");
+    await env.handler("chain create primary prod dev");
+    await env.handler("chain use primary");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "fell to the dev pool target");
+    assert.ok(lastNotify(env).includes("skipped"), "skip noted");
+    assert.equal(loadGlobalAccountConfig().chains![0].lastUsedTargetIndex, 1);
+  });
+
+  test("use warns when no target yields a member", async () => {
+    const env = makeEnv();
+    await withChainPool(env);
+    await env.handler("pool disable prod");
+    await env.handler("pool disable dev");
+    await env.handler("chain create primary prod dev");
+    await env.handler("chain use primary");
+    assert.ok(lastNotify(env).includes("No eligible member in chain"));
+  });
+});
+
+describe("/codex preset", () => {
+  async function withPresetPool(env: FakeEnv & { handler: (a: string) => Promise<void> }): Promise<void> {
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+  }
+
+  test("create stores the preset and optional model filter; rejects bad refs", async () => {
+    const env = makeEnv();
+    await withPresetPool(env);
+    await env.handler("preset create fast prod model gpt-5.5");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.presets!.length, 1);
+    assert.equal(cfg.presets![0].poolId, cfg.pools![0].id);
+    assert.equal(cfg.presets![0].model, "gpt-5.5");
+    await env.handler("preset create broken ghost");
+    assert.ok(lastNotify(env).includes("ghost"), "unknown pool rejected");
+    assert.equal(loadGlobalAccountConfig().presets!.length, 1, "nothing saved on failure");
+  });
+
+  test("list, inspect, enable, disable, delete", async () => {
+    const env = makeEnv();
+    await withPresetPool(env);
+    await env.handler("preset create fast prod");
+    await env.handler("preset inspect fast");
+    assert.ok((env.sent.at(-1)?.content as string).includes("strategy round-robin"));
+    await env.handler("preset disable fast");
+    assert.equal(loadGlobalAccountConfig().presets![0].enabled, false);
+    await env.handler("preset enable fast");
+    assert.equal(loadGlobalAccountConfig().presets![0].enabled, true);
+    await env.handler("preset delete fast");
+    assert.equal((loadGlobalAccountConfig().presets ?? []).length, 0);
+  });
+
+  test("activate resolves the pool's best eligible member and switches", async () => {
+    const env = makeEnv();
+    await withPresetPool(env);
+    await env.handler("preset create fast prod");
+    await env.handler("preset activate fast");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-2", "round-robin first member activated");
+    const cfg = loadGlobalAccountConfig();
+    assert.equal(cfg.pools![0].lastUsedIndex, 0, "pool pointer advanced");
+    assert.ok(lastNotify(env).includes("active member is"));
+  });
+
+  test("activate honors the model filter", async () => {
+    const env = makeEnv();
+    await withPresetPool(env);
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5-mini", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+    await env.handler("preset create fast prod model mini");
+    await env.handler("preset activate fast");
+    assert.equal(env.setModelCalls[0].id, "gpt-5.5-mini", "model filter picked the matching model");
+  });
+
+  test("activate warns when the model filter matches nothing", async () => {
+    const env = makeEnv();
+    await withPresetPool(env);
+    await env.handler("preset create fast prod model nonexistent-model");
+    await env.handler("preset activate fast");
+    assert.ok(lastNotify(env).includes('matching "nonexistent-model"'), "model mismatch surfaced");
+    assert.equal(env.setModelCalls.length, 0, "no model switched");
+  });
+});
+
+describe("/codex project", () => {
+  async function withProjectPool(env: FakeEnv & { handler: (a: string) => Promise<void> }): Promise<void> {
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    await env.handler("chain create primary prod");
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5", provider: "openai-codex-3" },
+    ];
+  }
+
+  test("allow restricts the project and allow all clears it", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project allow work");
+    const project = loadProjectAccountConfig(tmpProject)!;
+    assert.deepEqual(project.allowedCredentialIds, ["openai-codex-2"]);
+    await env.handler("project allow all");
+    assert.equal(loadProjectAccountConfig(tmpProject)?.allowedCredentialIds, undefined);
+  });
+
+  test("allow rejects unknown account refs", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project allow ghost");
+    assert.ok(lastNotify(env).includes("unknown account refs"));
+  });
+
+  test("pool override changes the effective members used by a chain", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project pool prod personal");
+    const project = loadProjectAccountConfig(tmpProject)!;
+    assert.deepEqual(project.poolOverrides!.prod!.credentialIds, ["openai-codex-3"]);
+    // Chain use now walks the overridden pool -> only personal is a member.
+    await env.handler("chain use primary");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "override restricted the pool members");
+  });
+
+  test("chain override replaces the targets used by chain use", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project chain primary openai-codex-3");
+    await env.handler("chain use primary");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "override target used");
+    assert.ok(lastNotify(env).includes("personal"));
+  });
+
+  test("pool clear removes the override", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project pool prod personal");
+    await env.handler("project pool clear prod");
+    assert.equal(loadProjectAccountConfig(tmpProject)?.poolOverrides, undefined);
+  });
+
+  test("project show lists restriction and effective pools/chains", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    await env.handler("project pool prod personal");
+    await env.handler("project show");
+    const out = env.sent.at(-1)?.content as string;
+    assert.ok(out.includes("trusted"), "trusted status shown");
+    assert.ok(out.includes("prod"), "effective pool listed");
+  });
+
+  test("untrusted projects refuse project config changes", async () => {
+    const env = makeEnv();
+    await withProjectPool(env);
+    env.ctx.isProjectTrusted = () => false;
+    await env.handler("project allow work");
+    assert.ok(lastNotify(env).includes("trusted projects"), "refusal shown");
+    assert.equal(loadProjectAccountConfig(tmpProject), null, "nothing written");
+  });
+});
+
+describe("/codex preset model resolution", () => {
+  test("falls back to another eligible member whose model matches the filter", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    await env.handler("account add personal");
+    env.auth["openai-codex-2"] = { configured: true };
+    env.auth["openai-codex-3"] = { configured: true };
+    await env.handler("pool create prod work personal");
+    // Strategy pick (round-robin first member) is work; only personal has the mini model.
+    env.models = [
+      { id: "gpt-5.5", provider: "openai-codex-2" },
+      { id: "gpt-5.5-mini", provider: "openai-codex-3" },
+    ];
+    await env.handler("preset create fast prod model mini");
+    await env.handler("preset activate fast");
+    assert.equal(env.setModelCalls[0].provider, "openai-codex-3", "member with the matching model wins");
+    assert.ok(lastNotify(env).includes("personal"));
+  });
+});
+
+describe("/codex project override validation", () => {
+  test("warns when overriding a pool that does not exist globally", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    env.auth["openai-codex-2"] = { configured: true };
+    await env.handler("project pool ghost openai-codex-2");
+    assert.ok(env.notifications.some((n) => n.msg.includes("No global pool named")), "inert override surfaced");
+    assert.ok(loadProjectAccountConfig(tmpProject)?.poolOverrides?.ghost, "override still stored for later");
+  });
+
+  test("warns when overriding a chain that does not exist globally", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    env.auth["openai-codex-2"] = { configured: true };
+    await env.handler("project chain ghost openai-codex-2");
+    assert.ok(env.notifications.some((n) => n.msg.includes("No global chain named")));
   });
 });

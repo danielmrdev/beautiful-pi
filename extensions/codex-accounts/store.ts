@@ -11,11 +11,16 @@ const { join, dirname } = require("node:path");
 const { randomUUID } = require("node:crypto");
 import type {
   AccountConfig,
+  ChainTarget,
   CodexAccount,
+  CodexChain,
   CodexPool,
+  CodexPreset,
   PoolSchedule,
   PoolStrategy,
   ProjectAccountConfig,
+  ProjectPoolOverride,
+  ProjectChainOverride,
   ScheduleDateRange,
   ScheduleTimeWindow,
 } from "./types.ts";
@@ -191,6 +196,56 @@ function normalizePool(raw: unknown): CodexPool | null {
   };
 }
 
+function normalizeChainTarget(raw: unknown): ChainTarget | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  if (t.kind === "pool" && typeof t.poolId === "string" && t.poolId) {
+    return { kind: "pool", poolId: t.poolId };
+  }
+  if (t.kind === "account" && typeof t.credentialId === "string" && t.credentialId) {
+    return { kind: "account", credentialId: t.credentialId };
+  }
+  return null;
+}
+
+function normalizeChain(raw: unknown): CodexChain | null {
+  if (!raw || typeof raw !== "object") return null;
+  const entry = raw as Record<string, unknown>;
+  if (typeof entry.id !== "string" || !entry.id) return null;
+  if (typeof entry.name !== "string" || !entry.name) return null;
+  if (!Array.isArray(entry.targets)) return null;
+  const targets = entry.targets
+    .map(normalizeChainTarget)
+    .filter((t): t is ChainTarget => t !== null);
+  return {
+    id: entry.id,
+    name: entry.name,
+    enabled: entry.enabled !== false,
+    targets,
+    lastUsedTargetIndex:
+      typeof entry.lastUsedTargetIndex === "number" && entry.lastUsedTargetIndex >= -1
+        ? entry.lastUsedTargetIndex
+        : -1,
+    createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+  };
+}
+
+function normalizePreset(raw: unknown): CodexPreset | null {
+  if (!raw || typeof raw !== "object") return null;
+  const entry = raw as Record<string, unknown>;
+  if (typeof entry.id !== "string" || !entry.id) return null;
+  if (typeof entry.name !== "string" || !entry.name) return null;
+  if (typeof entry.poolId !== "string" || !entry.poolId) return null;
+  return {
+    id: entry.id,
+    name: entry.name,
+    enabled: entry.enabled !== false,
+    poolId: entry.poolId,
+    ...(typeof entry.model === "string" && entry.model.trim() ? { model: entry.model.trim() } : {}),
+    createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+  };
+}
+
 function normalizeConfig(raw: Record<string, unknown> | null): AccountConfig {
   const cfg: AccountConfig = { version: 1, accounts: [] };
   if (!raw) return cfg;
@@ -204,6 +259,16 @@ function normalizeConfig(raw: Record<string, unknown> | null): AccountConfig {
     cfg.pools = raw.pools
       .map(normalizePool)
       .filter((p): p is CodexPool => p !== null);
+  }
+  if (Array.isArray(raw.chains)) {
+    cfg.chains = raw.chains
+      .map(normalizeChain)
+      .filter((c): c is CodexChain => c !== null);
+  }
+  if (Array.isArray(raw.presets)) {
+    cfg.presets = raw.presets
+      .map(normalizePreset)
+      .filter((p): p is CodexPreset => p !== null);
   }
   if (typeof raw.activeAccountId === "string" && raw.activeAccountId) {
     cfg.activeAccountId = raw.activeAccountId;
@@ -251,10 +316,59 @@ export function loadProjectAccountConfig(cwd: string): ProjectAccountConfig | nu
     const ids = allowed.filter((v): v is string => typeof v === "string" && v.length > 0);
     cfg.allowedCredentialIds = ids;
   }
+  const poolOverrides = normalizeOverrideRecord<ProjectPoolOverride>(
+    accounts.poolOverrides,
+    normalizePoolOverride,
+  );
+  if (poolOverrides) cfg.poolOverrides = poolOverrides;
+  const chainOverrides = normalizeOverrideRecord<ProjectChainOverride>(
+    accounts.chainOverrides,
+    normalizeChainOverride,
+  );
+  if (chainOverrides) cfg.chainOverrides = chainOverrides;
   if (typeof accounts.migratedFromLegacyAt === "string") {
     cfg.migratedFromLegacyAt = accounts.migratedFromLegacyAt;
   }
   return Object.keys(cfg).length > 0 ? cfg : null;
+}
+
+function normalizeOverrideRecord<T>(
+  raw: unknown,
+  normalize: (v: unknown) => T | null,
+): Record<string, T> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, T> = {};
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+    const normalized = normalize(value);
+    if (normalized && name) out[name] = normalized;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function normalizePoolOverride(raw: unknown): ProjectPoolOverride | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entry = raw as Record<string, unknown>;
+  const out: ProjectPoolOverride = {};
+  if (entry.enabled === true || entry.enabled === false) out.enabled = entry.enabled;
+  if (Array.isArray(entry.credentialIds)) {
+    const ids = entry.credentialIds.filter((v): v is string => typeof v === "string" && v.length > 0);
+    if (ids.length > 0) out.credentialIds = ids;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+function normalizeChainOverride(raw: unknown): ProjectChainOverride | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entry = raw as Record<string, unknown>;
+  const out: ProjectChainOverride = {};
+  if (entry.enabled === true || entry.enabled === false) out.enabled = entry.enabled;
+  if (Array.isArray(entry.targets)) {
+    const targets = entry.targets
+      .map(normalizeChainTarget)
+      .filter((t): t is ChainTarget => t !== null);
+    if (targets.length > 0) out.targets = targets;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 export function saveProjectAccountConfig(
@@ -590,4 +704,294 @@ export function clearPoolSelector(
     ok: true,
     errors: [],
   };
+}
+
+// ── Chain operations ─────────────────────────────────────────────────────────
+
+/** Resolve a chain by id or name. */
+export function resolveChain(cfg: AccountConfig, ref: string): CodexChain | undefined {
+  if (!ref) return undefined;
+  return (cfg.chains ?? []).find((c) => c.id === ref || c.name === ref.trim());
+}
+
+/** Resolve a pool by exact id (chains store pool ids). */
+export function resolvePoolById(cfg: AccountConfig, poolId: string): CodexPool | undefined {
+  return (cfg.pools ?? []).find((p) => p.id === poolId);
+}
+
+/**
+ * Resolve a CLI target token to a chain target: a pool ref (id/name) wins,
+ * then an account ref (id/credentialId/label). Undefined when unknown.
+ */
+export function resolveTargetRef(cfg: AccountConfig, ref: string): ChainTarget | undefined {
+  const pool = resolvePool(cfg, ref);
+  if (pool) return { kind: "pool", poolId: pool.id };
+  const account = resolveAccount(cfg, ref);
+  if (account) return { kind: "account", credentialId: account.credentialId };
+  return undefined;
+}
+
+function sameTarget(a: ChainTarget, b: ChainTarget): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind === "pool"
+    ? a.poolId === (b as { poolId: string }).poolId
+    : a.credentialId === (b as { credentialId: string }).credentialId;
+}
+
+function hasTarget(targets: ChainTarget[], target: ChainTarget): boolean {
+  return targets.some((t) => sameTarget(t, target));
+}
+
+function resolveTargetRefs(
+  cfg: AccountConfig,
+  refs: string[],
+): { targets: ChainTarget[]; errors: string[] } {
+  const targets: ChainTarget[] = [];
+  const errors: string[] = [];
+  for (const ref of refs) {
+    const target = resolveTargetRef(cfg, ref.trim());
+    if (target) {
+      if (!hasTarget(targets, target)) targets.push(target);
+    } else {
+      errors.push(ref.trim());
+    }
+  }
+  return { targets, errors };
+}
+
+export interface CreateChainResult {
+  cfg: AccountConfig;
+  chain?: CodexChain;
+  created: boolean;
+  errors: string[];
+}
+
+/**
+ * Create an enabled chain from ordered target refs. Unknown refs are rejected
+ * and no chain is created. The chain name must be unique.
+ */
+export function createChain(
+  cfg: AccountConfig,
+  name: string,
+  targetRefs: string[],
+): CreateChainResult {
+  const trimmed = name.trim();
+  const errors: string[] = [];
+  if (!trimmed) {
+    errors.push("chain name required");
+    return { cfg, created: false, errors };
+  }
+  if (resolveChain(cfg, trimmed)) {
+    errors.push(`chain "${trimmed}" already exists`);
+    return { cfg, created: false, errors };
+  }
+  if (targetRefs.length === 0) {
+    errors.push("at least one target required (a pool or account ref)");
+    return { cfg, created: false, errors };
+  }
+  const { targets, errors: targetErrors } = resolveTargetRefs(cfg, targetRefs);
+  if (targetErrors.length > 0) {
+    errors.push(...targetErrors.map((t) => `unknown target "${t}"`));
+    return { cfg, created: false, errors };
+  }
+  const chain: CodexChain = {
+    id: randomUUID(),
+    name: trimmed,
+    enabled: true,
+    targets,
+    lastUsedTargetIndex: -1,
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    cfg: { ...cfg, chains: [...(cfg.chains ?? []), chain] },
+    chain,
+    created: true,
+    errors: [],
+  };
+}
+
+export function deleteChain(cfg: AccountConfig, ref: string): AccountConfig {
+  const chain = resolveChain(cfg, ref);
+  if (!chain) return cfg;
+  return { ...cfg, chains: (cfg.chains ?? []).filter((c) => c.id !== chain.id) };
+}
+
+export function setChainEnabled(
+  cfg: AccountConfig,
+  ref: string,
+  enabled: boolean,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const chain = resolveChain(cfg, ref);
+  if (!chain) return { cfg, ok: false, errors: [`chain "${ref}" not found`] };
+  return {
+    cfg: {
+      ...cfg,
+      chains: (cfg.chains ?? []).map((c) => (c.id === chain.id ? { ...c, enabled } : c)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function addChainTargets(
+  cfg: AccountConfig,
+  ref: string,
+  targetRefs: string[],
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const chain = resolveChain(cfg, ref);
+  if (!chain) return { cfg, ok: false, errors: [`chain "${ref}" not found`] };
+  if (targetRefs.length === 0) return { cfg, ok: false, errors: ["at least one target required"] };
+  const { targets, errors } = resolveTargetRefs(cfg, targetRefs);
+  if (errors.length > 0) return { cfg, ok: false, errors: errors.map((t) => `unknown target "${t}"`) };
+  const merged = [...chain.targets];
+  for (const target of targets) {
+    if (!hasTarget(merged, target)) merged.push(target);
+  }
+  return {
+    cfg: {
+      ...cfg,
+      chains: (cfg.chains ?? []).map((c) => (c.id === chain.id ? { ...c, targets: merged } : c)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+export function removeChainTargets(
+  cfg: AccountConfig,
+  ref: string,
+  targetRefs: string[],
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const chain = resolveChain(cfg, ref);
+  if (!chain) return { cfg, ok: false, errors: [`chain "${ref}" not found`] };
+  const { targets, errors } = resolveTargetRefs(cfg, targetRefs);
+  if (errors.length > 0) return { cfg, ok: false, errors: errors.map((t) => `unknown target "${t}"`) };
+  const keep = chain.targets.filter((t) => !hasTarget(targets, t));
+  return {
+    cfg: {
+      ...cfg,
+      chains: (cfg.chains ?? []).map((c) => (c.id === chain.id ? { ...c, targets: keep } : c)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+// ── Preset operations ────────────────────────────────────────────────────────
+
+/** Resolve a preset by id or name. */
+export function resolvePreset(cfg: AccountConfig, ref: string): CodexPreset | undefined {
+  if (!ref) return undefined;
+  return (cfg.presets ?? []).find((p) => p.id === ref || p.name === ref.trim());
+}
+
+export interface CreatePresetResult {
+  cfg: AccountConfig;
+  preset?: CodexPreset;
+  created: boolean;
+  errors: string[];
+}
+
+/**
+ * Create an enabled preset for a pool. The pool ref must resolve to an
+ * existing pool; unknown refs are rejected without touching the config.
+ */
+export function createPreset(
+  cfg: AccountConfig,
+  name: string,
+  poolRef: string,
+  model: string | undefined,
+): CreatePresetResult {
+  const trimmed = name.trim();
+  const errors: string[] = [];
+  if (!trimmed) {
+    errors.push("preset name required");
+    return { cfg, created: false, errors };
+  }
+  if (resolvePreset(cfg, trimmed)) {
+    errors.push(`preset "${trimmed}" already exists`);
+    return { cfg, created: false, errors };
+  }
+  const pool = resolvePool(cfg, poolRef);
+  if (!pool) {
+    errors.push(`pool "${poolRef}" not found`);
+    return { cfg, created: false, errors };
+  }
+  const preset: CodexPreset = {
+    id: randomUUID(),
+    name: trimmed,
+    enabled: true,
+    poolId: pool.id,
+    ...(model && model.trim() ? { model: model.trim() } : {}),
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    cfg: { ...cfg, presets: [...(cfg.presets ?? []), preset] },
+    preset,
+    created: true,
+    errors: [],
+  };
+}
+
+export function deletePreset(cfg: AccountConfig, ref: string): AccountConfig {
+  const preset = resolvePreset(cfg, ref);
+  if (!preset) return cfg;
+  return { ...cfg, presets: (cfg.presets ?? []).filter((p) => p.id !== preset.id) };
+}
+
+export function setPresetEnabled(
+  cfg: AccountConfig,
+  ref: string,
+  enabled: boolean,
+): { cfg: AccountConfig; ok: boolean; errors: string[] } {
+  const preset = resolvePreset(cfg, ref);
+  if (!preset) return { cfg, ok: false, errors: [`preset "${ref}" not found`] };
+  return {
+    cfg: {
+      ...cfg,
+      presets: (cfg.presets ?? []).map((p) => (p.id === preset.id ? { ...p, enabled } : p)),
+    },
+    ok: true,
+    errors: [],
+  };
+}
+
+// ── Effective config (global + trusted project overrides) ───────────────────
+
+/**
+ * Merge trusted project overrides onto the global config: a project
+ * pool/chain override keyed by the global entry's name replaces the overridden
+ * fields. Global entries without an override are kept as-is (global config is
+ * the fallback). Returns a NEW config; nothing is persisted.
+ */
+export function resolveEffectiveConfig(
+  global: AccountConfig,
+  project: ProjectAccountConfig | null,
+): AccountConfig {
+  if (!project) return global;
+  let pools = global.pools ?? [];
+  if (project.poolOverrides) {
+    pools = pools.map((pool) => {
+      const override = project.poolOverrides![pool.name];
+      if (!override) return pool;
+      return {
+        ...pool,
+        ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+        ...(override.credentialIds !== undefined ? { credentialIds: override.credentialIds } : {}),
+      };
+    });
+  }
+  let chains = global.chains ?? [];
+  if (project.chainOverrides) {
+    chains = chains.map((chain) => {
+      const override = project.chainOverrides![chain.name];
+      if (!override) return chain;
+      return {
+        ...chain,
+        ...(override.enabled !== undefined ? { enabled: override.enabled } : {}),
+        ...(override.targets !== undefined ? { targets: override.targets } : {}),
+      };
+    });
+  }
+  return { ...global, pools, chains };
 }

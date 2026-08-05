@@ -43,7 +43,7 @@ import {
   setPoolSelector,
   clearPoolSelector,
 } from "./store.ts";
-import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId, activateAccountModel } from "./provider.ts";
+import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId, activateAccountModel, findAccountModel } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
 import { nextEligibleMember, getSharedRotationState, beginNewRequest, isCooldownActive, type EligibleMember, type RotationContext, type RotationState } from "./rotation.ts";
@@ -59,7 +59,25 @@ import {
 } from "./strategies.ts";
 import { fetchAccountQuotaReport, formatAccountQuota, formatUnavailableReason } from "./quota.ts";
 import { DATE_RE, TIME_RE, WINDOW_RE } from "./schedule.ts";
-import type { AccountAuthStatus, AccountConfig, CodexAccount, CodexPool, PoolSchedule } from "./types.ts";
+import { chainTargetStatus, memberUnavailableReason, type ChainWalkResult } from "./chain.ts";
+import {
+  createChain,
+  deleteChain,
+  setChainEnabled,
+  addChainTargets,
+  removeChainTargets,
+  resolveChain,
+  resolvePoolById,
+  createPreset,
+  deletePreset,
+  setPresetEnabled,
+  resolvePreset,
+  resolveTargetRef,
+  loadProjectAccountConfig,
+  saveProjectAccountConfig,
+  resolveEffectiveConfig,
+} from "./store.ts";
+import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, CodexPreset, PoolSchedule } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
@@ -93,6 +111,34 @@ const USAGE = [
   "",
   "days <spec>: everyday | weekdays | weekend | sun,mon,... | mon-fri ranges",
   "roles: <member>=<primary|backup>  (backup members used when no primary is eligible)",
+  "",
+  "/codex chain <subcommand>",
+  "",
+  "  create <name> <target...>   ordered fallback chain (targets: pool or account refs)",
+  "  list                        list chains with targets",
+  "  inspect <chain>             per-target eligibility",
+  "  use <chain>                 walk targets (each pool uses its strategy) and activate",
+  "  enable <chain> / disable <chain>",
+  "  delete <chain>              remove the chain",
+  "  add <chain> <target...>     append targets",
+  "  remove <chain> <target...>  remove targets",
+  "",
+  "/codex preset <subcommand>",
+  "",
+  "  create <name> <pool> [model <prefix>]   named routing preset",
+  "  list / inspect <preset>",
+  "  activate <preset>          resolve the best eligible member and switch to it",
+  "  enable <preset> / disable <preset> / delete <preset>",
+  "",
+  "/codex project <subcommand>   (trusted projects only; stored in .pi/beautiful-pi.json)",
+  "",
+  "  allow <account...>         restrict this project to the given accounts",
+  "  allow all                  clear the project account restriction",
+  "  pool <name> <member...>    override a global pool's members for this project",
+  "  pool enable|disable|clear <name>",
+  "  chain <name> <target...>   override a global chain's targets for this project",
+  "  chain enable|disable|clear <name>",
+  "  show                       effective (global + project) config",
 ].join("\n");
 
 function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error" = "info"): void {
@@ -831,6 +877,535 @@ function summarizeSchedule(schedule: PoolSchedule): string {
   return parts.join(" ") || "(always active)";
 }
 
+// ── Chain / preset / project commands ────────────────────────────────────────
+
+/** Effective config: global merged with trusted project overrides. */
+function loadEffective(ctx: ExtensionCommandContext): AccountConfig {
+  const global = loadGlobalAccountConfig();
+  if (!ctx.isProjectTrusted()) return global;
+  const project = loadProjectAccountConfig(ctx.cwd);
+  return project ? resolveEffectiveConfig(global, project) : global;
+}
+
+/**
+ * Walk a chain with strategy-aware selection: pool targets pick through the
+ * pool's own strategy (quota-first/scheduled/custom/round-robin), account
+ * targets are used directly. Skipped targets never break the walk.
+ */
+async function selectChainMember(
+  chain: CodexChain,
+  cfg: AccountConfig,
+  rotCtx: RotationContext,
+  state: RotationState,
+  ctx: ExtensionCommandContext,
+): Promise<ChainWalkResult | undefined> {
+  if (!chain.enabled) return undefined;
+  const targets = chain.targets;
+  if (targets.length === 0) return undefined;
+  const start = Math.min(Math.max(chain.lastUsedTargetIndex, 0), targets.length - 1);
+  const skipped: string[] = [];
+  for (let i = start; i < targets.length; i++) {
+    const target = targets[i];
+    if (target.kind === "pool") {
+      const pool = resolvePoolById(cfg, target.poolId);
+      if (!pool || !pool.enabled || pool.credentialIds.length === 0) {
+        skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
+        continue;
+      }
+      const member = await selectForStrategy(pool, cfg, rotCtx, state, ctx);
+      if (!member) {
+        skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
+        continue;
+      }
+      return { member, pool, targetIndex: i, skipped };
+    }
+    if (memberUnavailableReason(target.credentialId, cfg, rotCtx, state)) {
+      skipped.push(chainTargetStatus(target, cfg, rotCtx, state));
+      continue;
+    }
+    return { member: { credentialId: target.credentialId, index: -1 }, targetIndex: i, skipped };
+  }
+  return undefined;
+}
+
+function targetLabel(cfg: AccountConfig, target: ChainTarget): string {
+  if (target.kind === "pool") return resolvePoolById(cfg, target.poolId)?.name ?? target.poolId;
+  return poolMemberLabel(cfg, target.credentialId);
+}
+
+async function cmdChainCreate(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...refs] = tokenize(rest);
+  if (!name || refs.length === 0) {
+    notify(ctx, "Usage: /codex chain create <name> <target...>  (targets: pool or account refs)", "error");
+    return;
+  }
+  const result = createChain(cfg, name, refs);
+  if (!result.created) {
+    notify(ctx, `Could not create chain: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Created chain "${name}" with ${result.chain!.targets.length} target(s)`);
+}
+
+async function cmdChainList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const chains = cfg.chains ?? [];
+  if (chains.length === 0) {
+    sendOutput(pi, ["No Codex chains yet.", "Create one with: /codex chain create <name> <pool|account>..."]);
+    return;
+  }
+  const rows = chains.map((c) => {
+    const targets = c.targets.map((t) => targetLabel(cfg, t)).join(" -> ") || "(no targets)";
+    return `${c.enabled ? "●" : "○"} ${c.name}  [${targets}]`;
+  });
+  sendOutput(pi, ["Codex chains", ...rows, "", "● enabled · use /codex chain use <name> to walk"]);
+}
+
+async function cmdChainInspect(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const chain = resolveChain(cfg, ref);
+  if (!chain) {
+    sendOutput(pi, [`Chain "${ref}" not found. See: /codex chain list`]);
+    return;
+  }
+  const rotCtx = rotationContextFrom(ctx);
+  const state = getSharedRotationState();
+  const lines = [
+    `Chain: ${chain.name} (${chain.enabled ? "enabled" : "disabled"})`,
+    `  progress:  target #${Math.max(chain.lastUsedTargetIndex, 0)} (replay pointer)`,
+    "",
+    ...(chain.targets.length === 0
+      ? ["  (no targets — add some with /codex chain add)"]
+      : chain.targets.map(
+          (t, i) => `  ${i + 1}. ${targetLabel(cfg, t)}  ${chainTargetStatus(t, cfg, rotCtx, state)}`,
+        )),
+  ];
+  sendOutput(pi, lines);
+}
+
+async function cmdChainSetEnabled(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string, enabled: boolean): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const chain = resolveChain(cfg, ref);
+  if (!chain) {
+    notify(ctx, `Chain "${ref}" not found. See: /codex chain list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(setChainEnabled(cfg, ref, enabled).cfg);
+  notify(ctx, `Chain "${chain.name}" ${enabled ? "enabled" : "disabled"}`);
+}
+
+async function cmdChainDelete(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const chain = resolveChain(cfg, ref);
+  if (!chain) {
+    notify(ctx, `Chain "${ref}" not found. See: /codex chain list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(deleteChain(cfg, ref));
+  notify(ctx, `Deleted chain "${chain.name}"`);
+}
+
+async function cmdChainAdd(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...refs] = tokenize(rest);
+  if (!name || refs.length === 0) {
+    notify(ctx, "Usage: /codex chain add <chain> <target...>", "error");
+    return;
+  }
+  const result = addChainTargets(cfg, name, refs);
+  if (!result.ok) {
+    notify(ctx, `Could not add targets: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Added target(s) to chain "${name}"`);
+}
+
+async function cmdChainRemove(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const [name, ...refs] = tokenize(rest);
+  if (!name || refs.length === 0) {
+    notify(ctx, "Usage: /codex chain remove <chain> <target...>", "error");
+    return;
+  }
+  const result = removeChainTargets(cfg, name, refs);
+  if (!result.ok) {
+    notify(ctx, `Could not remove targets: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Removed target(s) from chain "${name}"`);
+}
+
+async function cmdChainUse(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const global = loadGlobalAccountConfig();
+  const chain = resolveChain(cfg, ref);
+  if (!chain) {
+    notify(ctx, `Chain "${ref}" not found. See: /codex chain list`, "error");
+    return;
+  }
+  if (!chain.enabled) {
+    notify(ctx, `Chain "${chain.name}" is disabled. Enable with: /codex chain enable ${chain.name}`, "warning");
+    return;
+  }
+  const rotCtx = rotationContextFrom(ctx);
+  const state = getSharedRotationState();
+  beginNewRequest(state);
+  // A fresh walk starts from the first target; replay progress only persists
+  // through failover (nextChainMember), which continues from the pointer.
+  const walk = await selectChainMember({ ...chain, lastUsedTargetIndex: -1 }, cfg, rotCtx, state, ctx);
+  if (!walk) {
+    notify(ctx, `No eligible member in chain "${chain.name}". Check /codex chain inspect ${chain.name}`, "warning");
+    return;
+  }
+  const account = cfg.accounts.find((a) => a.credentialId === walk.member.credentialId)!;
+  const model = await activateAccountModel(pi, ctx.modelRegistry, account);
+  if (!model) {
+    notify(ctx, `No models for "${account.label}". Authenticate first with: /login ${walk.member.credentialId}`, "warning");
+    return;
+  }
+  const withProgress: AccountConfig = {
+    ...setActiveAccount(global, account.id),
+    chains: (global.chains ?? []).map((c) =>
+      c.id === chain.id ? { ...c, lastUsedTargetIndex: walk.targetIndex } : c
+    ),
+    pools: walk.pool
+      ? (global.pools ?? []).map((p) =>
+          p.id === walk.pool!.id ? { ...p, lastUsedIndex: walk.member.index } : p
+        )
+      : (global.pools ?? []),
+  };
+  saveGlobalAccountConfig(withProgress);
+  const skippedNote = walk.skipped.length ? ` (skipped: ${walk.skipped.join("; ")})` : "";
+  notify(ctx, `Chain "${chain.name}": active member is "${account.label}" (${walk.member.credentialId}, ${model.id})${skippedNote}`);
+}
+
+// ── Preset commands ──────────────────────────────────────────────────────────
+
+async function cmdPresetCreate(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const tokens = tokenize(rest);
+  const [name, poolRef] = tokens;
+  const modelIdx = tokens.indexOf("model");
+  const model = modelIdx !== -1 && modelIdx < tokens.length - 1 ? tokens[modelIdx + 1] : undefined;
+  if (!name || !poolRef) {
+    notify(ctx, "Usage: /codex preset create <name> <pool> [model <prefix>]", "error");
+    return;
+  }
+  const result = createPreset(cfg, name, poolRef, model);
+  if (!result.created) {
+    notify(ctx, `Could not create preset: ${result.errors.join("; ")}`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  notify(ctx, `Created preset "${name}" on pool "${poolRef}"${model ? ` (model ${model})` : ""}`);
+}
+
+async function cmdPresetList(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const presets = cfg.presets ?? [];
+  if (presets.length === 0) {
+    sendOutput(pi, ["No Codex presets yet.", "Create one with: /codex preset create <name> <pool>"]);
+    return;
+  }
+  const rows = presets.map((p) => {
+    const pool = resolvePoolById(cfg, p.poolId);
+    return `${p.enabled ? "●" : "○"} ${p.name}  -> pool ${pool?.name ?? p.poolId}${p.model ? ` (model ${p.model})` : ""}`;
+  });
+  sendOutput(pi, ["Codex presets", ...rows, "", "● enabled · use /codex preset activate <name> to switch"]);
+}
+
+async function cmdPresetInspect(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const preset = resolvePreset(cfg, ref);
+  if (!preset) {
+    sendOutput(pi, [`Preset "${ref}" not found. See: /codex preset list`]);
+    return;
+  }
+  const pool = resolvePoolById(cfg, preset.poolId);
+  const rotCtx = rotationContextFrom(ctx);
+  const state = getSharedRotationState();
+  const lines = [
+    `Preset: ${preset.name} (${preset.enabled ? "enabled" : "disabled"})`,
+    `  pool:      ${pool?.name ?? preset.poolId}${pool ? ` (strategy ${pool.strategy ?? "round-robin"})` : " — not found"}`,
+    ...(preset.model ? [`  model:     ${preset.model}`] : []),
+    `  created:   ${preset.createdAt.slice(0, 10)}`,
+    ...(pool ? ["", ...pool.credentialIds.map((id) => `  ${poolMemberLabel(cfg, id)}  [${id}]  ${poolMemberStatus(ctx, cfg, id)}`)] : []),
+  ];
+  sendOutput(pi, lines);
+}
+
+async function cmdPresetActivate(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadEffective(ctx);
+  const global = loadGlobalAccountConfig();
+  const preset = resolvePreset(cfg, ref);
+  if (!preset) {
+    notify(ctx, `Preset "${ref}" not found. See: /codex preset list`, "error");
+    return;
+  }
+  if (!preset.enabled) {
+    notify(ctx, `Preset "${preset.name}" is disabled. Enable with: /codex preset enable ${preset.name}`, "warning");
+    return;
+  }
+  const pool = resolvePoolById(cfg, preset.poolId);
+  if (!pool) {
+    notify(ctx, `Preset "${preset.name}" references a missing pool — recreate it with /codex preset create`, "error");
+    return;
+  }
+  if (!pool.enabled) {
+    notify(ctx, `Pool "${pool.name}" is disabled. Enable with: /codex pool enable ${pool.name}`, "warning");
+    return;
+  }
+  const rotCtx = rotationContextFrom(ctx);
+  const state = getSharedRotationState();
+  beginNewRequest(state);
+  let member = await selectForStrategy(pool, cfg, rotCtx, state, ctx);
+  let account = member ? cfg.accounts.find((a) => a.credentialId === member!.credentialId) : undefined;
+  let model = account ? findAccountModel(ctx.modelRegistry, account, preset.model) : undefined;
+  // The strategy pick is the best eligible account; when its models don't
+  // match the preset's model filter, fall back to the first eligible member
+  // that does (the preset resolves a provider/model entry, not just a member).
+  if (!model && preset.model && member) {
+    for (const alt of eligibleMembers(pool, cfg, rotCtx, state)) {
+      if (alt.credentialId === member.credentialId) continue;
+      const altAccount = cfg.accounts.find((a) => a.credentialId === alt.credentialId);
+      if (!altAccount) continue;
+      const altModel = findAccountModel(ctx.modelRegistry, altAccount, preset.model);
+      if (altModel) {
+        member = alt;
+        account = altAccount;
+        model = altModel;
+        break;
+      }
+    }
+  }
+  if (!member || !account || !model) {
+    notify(
+      ctx,
+      `Preset "${preset.name}": no eligible member${preset.model ? ` with a model matching "${preset.model}"` : ""} in pool "${pool.name}"`,
+      "warning",
+    );
+    return;
+  }
+  const switched = await activateAccountModel(pi, ctx.modelRegistry, account, preset.model);
+  if (!switched) {
+    notify(ctx, `Preset "${preset.name}": could not switch to "${account.label}". Check /login ${member.credentialId}`, "warning");
+    return;
+  }
+  const withPointer: AccountConfig = {
+    ...setActiveAccount(global, account.id),
+    pools: (global.pools ?? []).map((p) => (p.id === pool.id ? { ...p, lastUsedIndex: member!.index } : p)),
+  };
+  saveGlobalAccountConfig(withPointer);
+  notify(ctx, `Preset "${preset.name}": active member is "${account.label}" (${member!.credentialId}, ${model.id})`);
+}
+
+async function cmdPresetSetEnabled(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string, enabled: boolean): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const result = setPresetEnabled(cfg, ref, enabled);
+  if (!result.ok) {
+    notify(ctx, `Preset "${ref}" not found. See: /codex preset list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(result.cfg);
+  const name = resolvePreset(result.cfg, ref)!.name;
+  notify(ctx, `Preset "${name}" ${enabled ? "enabled" : "disabled"}`);
+}
+
+async function cmdPresetDelete(pi: ExtensionAPI, ctx: ExtensionCommandContext, ref: string): Promise<void> {
+  const cfg = loadGlobalAccountConfig();
+  const preset = resolvePreset(cfg, ref);
+  if (!preset) {
+    notify(ctx, `Preset "${ref}" not found. See: /codex preset list`, "error");
+    return;
+  }
+  saveGlobalAccountConfig(deletePreset(cfg, ref));
+  notify(ctx, `Deleted preset "${preset.name}"`);
+}
+
+// ── Project commands ─────────────────────────────────────────────────────────
+
+function requireTrustedProject(ctx: ExtensionCommandContext): boolean {
+  if (ctx.isProjectTrusted()) return true;
+  notify(ctx, "Project config only applies to trusted projects. Trust the project in pi first.", "warning");
+  return false;
+}
+
+/**
+ * Apply an enable/disable/clear op to a project override record, returning
+ * undefined when no overrides remain (the key is dropped from the file).
+ */
+function toggleProjectOverride<T>(
+  overrides: Record<string, T> | undefined,
+  op: "clear" | "enable" | "disable",
+  name: string,
+): Record<string, T> | undefined {
+  const next = { ...(overrides ?? {}) };
+  if (op === "clear") delete next[name];
+  else next[name] = { ...(next[name] ?? {}), enabled: op === "enable" } as T;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function warnUnknownOverrideTarget(ctx: ExtensionCommandContext, kind: string, name: string): void {
+  notify(
+    ctx,
+    `No global ${kind} named "${name}" — this project override will apply once it exists`,
+    "warning",
+  );
+}
+
+async function cmdProjectAllow(ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  if (!requireTrustedProject(ctx)) return;
+  const cfg = loadGlobalAccountConfig();
+  const project = loadProjectAccountConfig(ctx.cwd) ?? {};
+  const refs = tokenize(rest);
+  if (refs.length === 0) {
+    notify(ctx, "Usage: /codex project allow <account...>  |  /codex project allow all", "error");
+    return;
+  }
+  if (refs.some((r) => r === "all")) {
+    saveProjectAccountConfig(ctx.cwd, { ...project, allowedCredentialIds: undefined });
+    notify(ctx, "Project account restriction cleared — all accounts allowed");
+    return;
+  }
+  const resolved = refs.map((r) => resolveAccount(cfg, r));
+  const unknown = resolved.filter((a) => !a).length;
+  if (unknown > 0) {
+    notify(ctx, "Could not set restriction: unknown account refs", "error");
+    return;
+  }
+  const ids = [...new Set([...(project.allowedCredentialIds ?? []), ...resolved.map((a) => a!.credentialId)])];
+  saveProjectAccountConfig(ctx.cwd, { ...project, allowedCredentialIds: ids });
+  notify(ctx, `Project restricted to: ${ids.join(", ")}`);
+}
+
+async function cmdProjectPool(ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  if (!requireTrustedProject(ctx)) return;
+  const cfg = loadGlobalAccountConfig();
+  const project = loadProjectAccountConfig(ctx.cwd) ?? {};
+  const [first, ...rest2] = tokenize(rest);
+  if (!first) {
+    notify(ctx, "Usage: /codex project pool <name> <member...> | pool enable|disable|clear <name>", "error");
+    return;
+  }
+  if (first === "clear" || first === "enable" || first === "disable") {
+    const target = rest2[0];
+    if (!target) {
+      notify(ctx, "Usage: /codex project pool enable|disable|clear <name>", "error");
+      return;
+    }
+    const overrides = toggleProjectOverride(project.poolOverrides, first, target);
+    saveProjectAccountConfig(ctx.cwd, { ...project, poolOverrides: overrides });
+    notify(ctx, first === "clear"
+      ? `Cleared project pool override for "${target}"`
+      : `Project pool "${target}" ${first === "enable" ? "enabled" : "disabled"}`);
+    return;
+  }
+  const name = first;
+  const refs = rest2;
+  if (refs.length === 0) {
+    notify(ctx, "Usage: /codex project pool <name> <member...>", "error");
+    return;
+  }
+  const resolved = refs.map((r) => resolveAccount(cfg, r));
+  if (resolved.some((a) => !a)) {
+    notify(ctx, "Could not set override: unknown account refs", "error");
+    return;
+  }
+  if (!resolvePool(cfg, name)) warnUnknownOverrideTarget(ctx, "pool", name);
+  const ids = [...new Set(resolved.map((a) => a!.credentialId))];
+  saveProjectAccountConfig(ctx.cwd, {
+    ...project,
+    poolOverrides: { ...(project.poolOverrides ?? {}), [name]: { credentialIds: ids } },
+  });
+  notify(ctx, `Project pool override "${name}": members ${ids.join(", ")}`);
+}
+
+async function cmdProjectChain(ctx: ExtensionCommandContext, rest: string): Promise<void> {
+  if (!requireTrustedProject(ctx)) return;
+  const cfg = loadGlobalAccountConfig();
+  const project = loadProjectAccountConfig(ctx.cwd) ?? {};
+  const [first, ...rest2] = tokenize(rest);
+  if (!first) {
+    notify(ctx, "Usage: /codex project chain <name> <target...> | chain enable|disable|clear <name>", "error");
+    return;
+  }
+  if (first === "clear" || first === "enable" || first === "disable") {
+    const target = rest2[0];
+    if (!target) {
+      notify(ctx, "Usage: /codex project chain enable|disable|clear <name>", "error");
+      return;
+    }
+    const overrides = toggleProjectOverride(project.chainOverrides, first, target);
+    saveProjectAccountConfig(ctx.cwd, { ...project, chainOverrides: overrides });
+    notify(ctx, first === "clear"
+      ? `Cleared project chain override for "${target}"`
+      : `Project chain "${target}" ${first === "enable" ? "enabled" : "disabled"}`);
+    return;
+  }
+  const name = first;
+  const refs = rest2;
+  if (refs.length === 0) {
+    notify(ctx, "Usage: /codex project chain <name> <target...>", "error");
+    return;
+  }
+  const targets: ChainTarget[] = [];
+  for (const ref of refs) {
+    const target = resolveTargetRef(cfg, ref);
+    if (!target) {
+      notify(ctx, `Could not set override: unknown target "${ref}"`, "error");
+      return;
+    }
+    targets.push(target);
+  }
+  if (!resolveChain(cfg, name)) warnUnknownOverrideTarget(ctx, "chain", name);
+  saveProjectAccountConfig(ctx.cwd, {
+    ...project,
+    chainOverrides: {
+      ...(project.chainOverrides ?? {}),
+      [name]: { targets },
+    },
+  });
+  notify(ctx, `Project chain override "${name}": ${refs.join(" -> ")}`);
+}
+
+async function cmdProjectShow(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
+  const global = loadGlobalAccountConfig();
+  const project = loadProjectAccountConfig(ctx.cwd);
+  const trusted = ctx.isProjectTrusted();
+  const effective = trusted && project ? resolveEffectiveConfig(global, project) : global;
+  const lines: string[] = [
+    `Project: ${ctx.cwd}`,
+    `  trusted:   ${trusted ? "yes" : "no"}`,
+    `  restriction: ${project?.allowedCredentialIds?.length
+      ? project.allowedCredentialIds.join(", ")
+      : "none (all accounts allowed)"}`,
+  ];
+  if (project?.poolOverrides) {
+    lines.push("  pool overrides:");
+    for (const [name, o] of Object.entries(project.poolOverrides)) {
+      lines.push(`    ${name}: ${o.enabled === false ? "disabled" : "enabled"}${o.credentialIds ? `, members ${o.credentialIds.join(", ")}` : ""}`);
+    }
+  }
+  if (project?.chainOverrides) {
+    lines.push("  chain overrides:");
+    for (const [name, o] of Object.entries(project.chainOverrides)) {
+      const targets = o.targets?.map((t) => t.kind === "pool" ? resolvePoolById(effective, t.poolId)?.name ?? t.poolId : t.credentialId).join(" -> ");
+      lines.push(`    ${name}: ${o.enabled === false ? "disabled" : "enabled"}${targets ? `, targets ${targets}` : ""}`);
+    }
+  }
+  lines.push("", "Effective pools:");
+  const pools = effective.pools ?? [];
+  lines.push(...(pools.length === 0 ? ["  (none)"] : pools.map((p) => `  ${p.enabled ? "●" : "○"} ${p.name}  [${p.credentialIds.map((id) => poolMemberLabel(effective, id)).join(", ")}]`)));
+  lines.push("", "Effective chains:");
+  const chains = effective.chains ?? [];
+  lines.push(...(chains.length === 0 ? ["  (none)"] : chains.map((c) => `  ${c.enabled ? "●" : "○"} ${c.name}  [${c.targets.map((t) => targetLabel(effective, t)).join(" -> ")}]`)));
+  sendOutput(pi, lines);
+}
+
 // ── Command registration ─────────────────────────────────────────────────────
 
 function tokenize(args: string): string[] {
@@ -874,6 +1449,50 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "strategy": await cmdPoolStrategy(pi, ctx, restArgs); break;
           case "schedule": await cmdPoolSchedule(pi, ctx, restArgs); break;
           case "selector": await cmdPoolSelector(pi, ctx, restArgs); break;
+          default:
+            notify(ctx, USAGE, "info");
+        }
+        return;
+      }
+      if (section === "chain") {
+        const restArgs = rest.join(" ");
+        switch (sub) {
+          case "create":  await cmdChainCreate(pi, ctx, restArgs); break;
+          case "list":    await cmdChainList(pi, ctx); break;
+          case "inspect": await cmdChainInspect(pi, ctx, restArgs.trim()); break;
+          case "use":     await cmdChainUse(pi, ctx, restArgs.trim()); break;
+          case "enable":  await cmdChainSetEnabled(pi, ctx, restArgs.trim(), true); break;
+          case "disable": await cmdChainSetEnabled(pi, ctx, restArgs.trim(), false); break;
+          case "delete":  await cmdChainDelete(pi, ctx, restArgs.trim()); break;
+          case "add":     await cmdChainAdd(pi, ctx, restArgs); break;
+          case "remove":  await cmdChainRemove(pi, ctx, restArgs); break;
+          default:
+            notify(ctx, USAGE, "info");
+        }
+        return;
+      }
+      if (section === "preset") {
+        const restArgs = rest.join(" ");
+        switch (sub) {
+          case "create":   await cmdPresetCreate(pi, ctx, restArgs); break;
+          case "list":     await cmdPresetList(pi, ctx); break;
+          case "inspect":  await cmdPresetInspect(pi, ctx, restArgs.trim()); break;
+          case "activate": await cmdPresetActivate(pi, ctx, restArgs.trim()); break;
+          case "enable":   await cmdPresetSetEnabled(pi, ctx, restArgs.trim(), true); break;
+          case "disable":  await cmdPresetSetEnabled(pi, ctx, restArgs.trim(), false); break;
+          case "delete":   await cmdPresetDelete(pi, ctx, restArgs.trim()); break;
+          default:
+            notify(ctx, USAGE, "info");
+        }
+        return;
+      }
+      if (section === "project") {
+        const restArgs = rest.join(" ");
+        switch (sub) {
+          case "allow":  await cmdProjectAllow(ctx, restArgs); break;
+          case "pool":   await cmdProjectPool(ctx, restArgs); break;
+          case "chain":  await cmdProjectChain(ctx, restArgs); break;
+          case "show":   await cmdProjectShow(pi, ctx); break;
           default:
             notify(ctx, USAGE, "info");
         }

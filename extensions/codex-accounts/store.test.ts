@@ -26,9 +26,18 @@ import {
   setPoolSelector,
   clearPoolSelector,
   isPoolStrategy,
+  createChain,
+  addChainTargets,
+  removeChainTargets,
+  setChainEnabled,
+  deleteChain,
+  createPreset,
+  setPresetEnabled,
+  deletePreset,
+  resolveEffectiveConfig,
 } from "./store.ts";
 import { nextCodexCredentialId, isSuffixedCodexId } from "./provider.ts";
-import type { AccountConfig } from "./types.ts";
+import type { AccountConfig, ProjectAccountConfig } from "./types.ts";
 
 // ── Setup: isolated HOME ──────────────────────────────────────────────────────
 
@@ -309,5 +318,155 @@ describe("pool strategy ops", () => {
     assert.deepEqual(pool.schedule?.timeWindows, [{ start: "22:00", end: "02:00" }]);
     assert.equal(pool.schedule?.memberRoles?.["openai-codex-2"], "backup");
     assert.equal(pool.selector, "echo work");
+  });
+});
+
+describe("chain ops", () => {
+  function cfgWithPoolAndAccount(): AccountConfig {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "work" }).cfg;
+    const created = createPool(cfg, "prod", ["personal", "work"]);
+    return created.cfg;
+  }
+
+  test("createChain resolves pool and account refs in order", () => {
+    const cfg = cfgWithPoolAndAccount();
+    const r = createChain(cfg, "primary", ["prod", "openai-codex-2"]);
+    assert.equal(r.created, true);
+    assert.equal(r.chain!.targets.length, 2);
+    assert.deepEqual(r.chain!.targets[0], { kind: "pool", poolId: cfg.pools![0].id });
+    assert.deepEqual(r.chain!.targets[1], { kind: "account", credentialId: "openai-codex-2" });
+    assert.equal(r.chain!.enabled, true);
+    assert.equal(r.chain!.lastUsedTargetIndex, -1);
+  });
+
+  test("createChain rejects unknown targets without touching config", () => {
+    const cfg = cfgWithPoolAndAccount();
+    const r = createChain(cfg, "primary", ["prod", "ghost"]);
+    assert.equal(r.created, false);
+    assert.ok(r.errors[0].includes("ghost"));
+    assert.equal((cfg.chains ?? []).length, 0, "config unchanged");
+  });
+
+  test("createChain rejects duplicate names and empty target lists", () => {
+    const cfg = cfgWithPoolAndAccount();
+    const first = createChain(cfg, "primary", ["prod"]);
+    assert.equal(first.created, true);
+    const dup = createChain(first.cfg, "primary", ["prod"]);
+    assert.equal(dup.created, false);
+    assert.ok(dup.errors[0].includes("already exists"));
+    const empty = createChain(first.cfg, "secondary", []);
+    assert.equal(empty.created, false);
+  });
+
+  test("chain add/remove targets, enable/disable, delete", () => {
+    let cfg = cfgWithPoolAndAccount();
+    cfg = createChain(cfg, "primary", ["prod"]).cfg;
+    const added = addChainTargets(cfg, "primary", ["openai-codex-2"]);
+    assert.equal(added.ok, true);
+    assert.equal(added.cfg.chains![0].targets.length, 2);
+    const bad = addChainTargets(cfg, "primary", ["ghost"]);
+    assert.equal(bad.ok, false);
+    const removed = removeChainTargets(added.cfg, "primary", ["openai-codex-2"]);
+    assert.equal(removed.ok, true);
+    assert.equal(removed.cfg.chains![0].targets.length, 1);
+    const disabled = setChainEnabled(removed.cfg, "primary", false);
+    assert.equal(disabled.cfg.chains![0].enabled, false);
+    const unknown = setChainEnabled(disabled.cfg, "ghost", true);
+    assert.equal(unknown.ok, false);
+    const deleted = deleteChain(disabled.cfg, "primary");
+    assert.equal((deleted.chains ?? []).length, 0);
+  });
+});
+
+describe("preset ops", () => {
+  function cfgWithPool(): AccountConfig {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    return createPool(cfg, "prod", ["personal"]).cfg;
+  }
+
+  test("createPreset resolves the pool and stores an optional model filter", () => {
+    const cfg = cfgWithPool();
+    const r = createPreset(cfg, "fast", "prod", "gpt-5-codex");
+    assert.equal(r.created, true);
+    assert.equal(r.preset!.poolId, cfg.pools![0].id);
+    assert.equal(r.preset!.model, "gpt-5-codex");
+    const noModel = createPreset(cfg, "plain", "prod", undefined);
+    assert.equal(noModel.preset!.model, undefined);
+  });
+
+  test("createPreset rejects unknown pools and duplicate names", () => {
+    const cfg = cfgWithPool();
+    const bad = createPreset(cfg, "fast", "ghost", undefined);
+    assert.equal(bad.created, false);
+    assert.ok(bad.errors[0].includes("ghost"));
+    const first = createPreset(cfg, "fast", "prod", undefined);
+    assert.equal(first.created, true);
+    const dup = createPreset(first.cfg, "fast", "prod", undefined);
+    assert.equal(dup.created, false);
+    assert.equal((cfg.presets ?? []).length, 0, "config unchanged on failure");
+  });
+
+  test("preset enable/disable and delete", () => {
+    let cfg = cfgWithPool();
+    cfg = createPreset(cfg, "fast", "prod", undefined).cfg;
+    const disabled = setPresetEnabled(cfg, "fast", false);
+    assert.equal(disabled.cfg.presets![0].enabled, false);
+    assert.equal(setPresetEnabled(disabled.cfg, "ghost", true).ok, false);
+    const deleted = deletePreset(disabled.cfg, "fast");
+    assert.equal((deleted.presets ?? []).length, 0);
+  });
+});
+
+describe("effective config (project overrides)", () => {
+  function globalCfg(): AccountConfig {
+    let cfg = addAccount(emptyCfg(), { provider: "openai-codex", credentialId: "openai-codex", label: "personal" }).cfg;
+    cfg = addAccount(cfg, { provider: "openai-codex", credentialId: "openai-codex-2", label: "work" }).cfg;
+    cfg = createPool(cfg, "prod", ["personal", "work"]).cfg;
+    cfg = createChain(cfg, "primary", ["prod"]).cfg;
+    return cfg;
+  }
+
+  test("no project config keeps the global config untouched", () => {
+    const global = globalCfg();
+    const effective = resolveEffectiveConfig(global, null);
+    assert.equal(effective, global, "returns the same reference");
+  });
+
+  test("pool override replaces members and enabled for the named pool", () => {
+    const global = globalCfg();
+    const project: ProjectAccountConfig = {
+      poolOverrides: {
+        prod: { enabled: false, credentialIds: ["openai-codex-2"] },
+      },
+    };
+    const effective = resolveEffectiveConfig(global, project);
+    const prod = effective.pools!.find((p) => p.name === "prod")!;
+    assert.equal(prod.enabled, false);
+    assert.deepEqual(prod.credentialIds, ["openai-codex-2"]);
+    // Other pools are untouched.
+    assert.equal(effective.pools!.length, 1);
+  });
+
+  test("chain override replaces targets for the named chain", () => {
+    const global = globalCfg();
+    const project: ProjectAccountConfig = {
+      chainOverrides: {
+        primary: { targets: [{ kind: "account", credentialId: "openai-codex-2" }] },
+      },
+    };
+    const effective = resolveEffectiveConfig(global, project);
+    const chain = effective.chains!.find((c) => c.name === "primary")!;
+    assert.deepEqual(chain.targets, [{ kind: "account", credentialId: "openai-codex-2" }]);
+  });
+
+  test("global entries without an override remain the fallback", () => {
+    const global = globalCfg();
+    const project: ProjectAccountConfig = {
+      poolOverrides: { prod: { credentialIds: ["openai-codex-2"] } },
+    };
+    const effective = resolveEffectiveConfig(global, project);
+    const primary = effective.chains!.find((c) => c.name === "primary")!;
+    assert.deepEqual(primary.targets, [{ kind: "pool", poolId: global.pools![0].id }], "chain untouched");
   });
 });

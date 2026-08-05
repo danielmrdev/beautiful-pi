@@ -16,7 +16,7 @@ import {
   wireFailover,
 } from "./failover.ts";
 import { createRotationState, markCooldown } from "./rotation.ts";
-import { loadGlobalAccountConfig } from "./store.ts";
+import { loadGlobalAccountConfig, resolveEffectiveConfig } from "./store.ts";
 import { fakePi } from "../test-helpers.ts";
 import type { AccountConfig, CodexAccount, CodexPool } from "./types.ts";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -357,5 +357,186 @@ describe("failover wiring (agent_end -> agent_settled)", () => {
     await agentSettled({}, ctx);
     await agentSettled({}, ctx);
     assert.equal(setModelCount, 1, "settled re-fire is ignored");
+  });
+});
+
+describe("decideFailover with chains", () => {
+  function cfgWithChains(): AccountConfig {
+    const pools = [
+      pool(["openai-codex", "openai-codex-2"], { id: "pool-1", name: "prod" }),
+      pool(["openai-codex-3"], { id: "pool-2", name: "dev", lastUsedIndex: -1 }),
+    ];
+    return {
+      version: 1,
+      accounts: ["openai-codex", "openai-codex-2", "openai-codex-3"].map(account),
+      pools,
+      chains: [
+        {
+          id: "chain-1",
+          name: "primary",
+          enabled: true,
+          targets: [
+            { kind: "pool", poolId: "pool-1" },
+            { kind: "pool", poolId: "pool-2" },
+          ],
+          lastUsedTargetIndex: 0,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+  }
+
+  test("chain replay rotates past the failed member, then advances the chain", () => {
+    const cfg = cfgWithChains();
+    const state = createRotationState();
+    const run = { lastUserText: "retry me", lastProvider: "openai-codex", lastError: "429 rate limit" };
+    const first = decideFailover(run, cfg, ctx(), state, NOW);
+    assert.equal(first.kind, "retry");
+    if (first.kind !== "retry") return;
+    assert.equal(first.toCredentialId, "openai-codex-2", "rotates past failed member in same pool target");
+    assert.equal(first.chainId, "chain-1");
+    assert.equal(first.toTargetIndex, 0, "chain progress stays on the failing target's pool");
+    // Second failure on the same user text: pool exhausted -> next chain target.
+    const secondRun = { ...run, lastProvider: "openai-codex-2" };
+    const second = decideFailover(secondRun, cfg, ctx(), state, NOW);
+    assert.equal(second.kind, "retry");
+    if (second.kind !== "retry") return;
+    assert.equal(second.toCredentialId, "openai-codex-3", "moved to the next chain target");
+    assert.equal(second.toTargetIndex, 1);
+    assert.equal(second.poolId, "pool-2");
+  });
+
+  test("chain replay never revisits the failed target", () => {
+    const cfg = cfgWithChains();
+    const state = createRotationState();
+    // Both pool-1 members failed on this user text already.
+    const run1 = { lastUserText: "same text", lastProvider: "openai-codex", lastError: "429 rate limit" };
+    const d1 = decideFailover(run1, cfg, ctx(), state, NOW);
+    assert.equal(d1.kind, "retry");
+    if (d1.kind !== "retry") return;
+    assert.equal(d1.toCredentialId, "openai-codex-2");
+    const run2 = { lastUserText: "same text", lastProvider: "openai-codex-2", lastError: "429 rate limit" };
+    const d2 = decideFailover(run2, cfg, ctx(), state, NOW);
+    assert.equal(d2.kind, "retry");
+    if (d2.kind !== "retry") return;
+    assert.equal(d2.toCredentialId, "openai-codex-3");
+    const run3 = { lastUserText: "same text", lastProvider: "openai-codex-3", lastError: "429 rate limit" };
+    const d3 = decideFailover(run3, cfg, ctx(), state, NOW);
+    assert.equal(d3.kind, "none", "no member left in the chain");
+  });
+
+  test("a direct account target in a chain fails over to the next target", () => {
+    const pools = [pool(["openai-codex"], { id: "pool-1", name: "prod", lastUsedIndex: -1 })];
+    const cfg: AccountConfig = {
+      version: 1,
+      accounts: ["openai-codex", "openai-codex-2"].map(account),
+      pools,
+      chains: [
+        {
+          id: "chain-1",
+          name: "primary",
+          enabled: true,
+          targets: [
+            { kind: "account", credentialId: "openai-codex" },
+            { kind: "account", credentialId: "openai-codex-2" },
+          ],
+          lastUsedTargetIndex: 0,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    const state = createRotationState();
+    const run = { lastUserText: "retry me", lastProvider: "openai-codex", lastError: "rate limit hit" };
+    const d = decideFailover(run, cfg, ctx(), state, NOW);
+    assert.equal(d.kind, "retry");
+    if (d.kind !== "retry") return;
+    assert.equal(d.toCredentialId, "openai-codex-2");
+    assert.equal(d.poolId, undefined, "no pool pointer for account targets");
+  });
+});
+
+describe("actOnFailover with chains", () => {
+  test("persists the chain target progress and the pool pointer", async () => {
+    const dir = join(tmpHome, ".pi", "agent");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "beautiful-pi.json"),
+      JSON.stringify({
+        accounts: {
+          version: 1,
+          accounts: ["openai-codex", "openai-codex-2"].map(account),
+          pools: [pool(["openai-codex", "openai-codex-2"])],
+          chains: [
+            {
+              id: "chain-1",
+              name: "primary",
+              enabled: true,
+              targets: [{ kind: "pool", poolId: "pool-1" }],
+              lastUsedTargetIndex: -1,
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+    const pi = {
+      setModel: async () => true,
+      sendUserMessage: () => {},
+    } as unknown as ExtensionAPI;
+    const ctx = {
+      modelRegistry: {
+        getAll: () => [{ provider: "openai-codex-2", id: "gpt-5.5" }],
+        getProviderAuthStatus: () => ({ configured: true }),
+        registerProvider: () => {},
+        hasConfiguredAuth: () => true,
+      },
+      cwd: "/tmp/proj",
+      hasUI: false,
+    };
+    await actOnFailover(pi, ctx as never, {
+      kind: "retry",
+      fromCredentialId: "openai-codex",
+      toCredentialId: "openai-codex-2",
+      poolName: "prod",
+      toIndex: 1,
+      poolId: "pool-1",
+      chainId: "chain-1",
+      toTargetIndex: 0,
+      userText: "retry me",
+    });
+    const saved = loadGlobalAccountConfig();
+    assert.equal(saved.pools![0].lastUsedIndex, 1, "pool pointer persisted");
+    assert.equal(saved.chains![0].lastUsedTargetIndex, 0, "chain progress persisted");
+  });
+});
+
+describe("decideFailover with project overrides", () => {
+  test("replay honors an effective pool override's member list", () => {
+    // Global pool prod = [openai-codex, openai-codex-2]; project override = [openai-codex-2, openai-codex-3].
+    const global: AccountConfig = {
+      version: 1,
+      accounts: ["openai-codex", "openai-codex-2", "openai-codex-3"].map(account),
+      pools: [pool(["openai-codex", "openai-codex-2"])],
+      chains: [
+        {
+          id: "chain-1",
+          name: "primary",
+          enabled: true,
+          targets: [{ kind: "pool", poolId: "pool-1" }],
+          lastUsedTargetIndex: 0,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    const effective = resolveEffectiveConfig(global, {
+      poolOverrides: { prod: { credentialIds: ["openai-codex-2", "openai-codex-3"] } },
+    });
+    assert.equal(effective.pools![0].credentialIds.length, 2, "override applied");
+    const state = createRotationState();
+    const run = { lastUserText: "retry me", lastProvider: "openai-codex-2", lastError: "429 rate limit" };
+    const d = decideFailover(run, effective, ctx(), state, NOW);
+    assert.equal(d.kind, "retry");
+    if (d.kind !== "retry") return;
+    assert.equal(d.toCredentialId, "openai-codex-3", "replay routes to the override member, not the global one");
   });
 });

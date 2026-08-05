@@ -70,29 +70,45 @@ export interface AccountModelRegistry {
 }
 
 /**
- * Make an account's model the active model: (re)register its provider, pick
- * the first model with configured auth, and switch via pi.setModel. Returns
- * the switched model, or undefined when the account has no usable model
- * (not registered/authenticated). Never throws.
+ * The account's first model with configured auth matching an optional
+ * model-id substring. Purely a read — never switches models.
  */
-export async function activateAccountModel(
-  pi: { setModel(model: Model<any>): Promise<boolean> },
+export function findAccountModel(
   registry: AccountModelRegistry,
   account: CodexAccount,
-): Promise<Model<any> | undefined> {
-  try {
-    registerAccountProvider(registry as unknown as ModelRegistry, account);
-  } catch {
-    // provider registration is best-effort; the model pick below still applies
-  }
-  const available = registry.getAll().find((m) => {
+  modelFilter?: string,
+): Model<any> | undefined {
+  const needle = modelFilter?.trim().toLowerCase();
+  return registry.getAll().find((m) => {
     if (m.provider !== account.credentialId) return false;
+    if (needle && !m.id.toLowerCase().includes(needle)) return false;
     try {
       return registry.hasConfiguredAuth(m);
     } catch {
       return false;
     }
   });
+}
+
+/**
+ * Make an account's model the active model: (re)register its provider, pick
+ * the first model with configured auth (optionally filtered by a model-id
+ * substring), and switch via pi.setModel. Returns the switched model, or
+ * undefined when the account has no usable model (not registered/
+ * authenticated, or no model matches the filter). Never throws.
+ */
+export async function activateAccountModel(
+  pi: { setModel(model: Model<any>): Promise<boolean> },
+  registry: AccountModelRegistry,
+  account: CodexAccount,
+  modelFilter?: string,
+): Promise<Model<any> | undefined> {
+  try {
+    registerAccountProvider(registry as unknown as ModelRegistry, account);
+  } catch {
+    // provider registration is best-effort; the model pick below still applies
+  }
+  const available = findAccountModel(registry, account, modelFilter);
   if (!available) return undefined;
   try {
     const switched = await pi.setModel(available);

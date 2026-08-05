@@ -97,17 +97,81 @@ export interface AccountConfig {
   activeAccountId?: string;
   migration?: AccountMigrationState;
   pools?: CodexPool[];
+  /** Ordered fallback chains (see CodexChain). */
+  chains?: CodexChain[];
+  /** Named routing presets (see CodexPreset). */
+  presets?: CodexPreset[];
+}
+
+/** One ordered fallback target in a chain: a pool, or a direct account. */
+export type ChainTarget =
+  | { kind: "pool"; poolId: string }
+  | { kind: "account"; credentialId: string };
+
+/**
+ * An ordered fallback chain of pools/accounts. Traversal tries targets in
+ * order: pool targets select through the pool's own strategy (round-robin in
+ * the failover replay), account targets use the account directly. Skipped
+ * targets (disabled, unauthenticated, restricted, exhausted, in cooldown)
+ * never break the walk.
+ */
+export interface CodexChain {
+  id: string;
+  /** Unique display name. */
+  name: string;
+  enabled: boolean;
+  /** Ordered fallback targets. */
+  targets: ChainTarget[];
+  /** Index of the last target that produced a member (replay progress). */
+  lastUsedTargetIndex: number;
+  createdAt: string;
+}
+
+/**
+ * Named routing preset: resolve the best currently eligible member of a pool
+ * (via the pool's strategy) and activate its model. `model` is an optional
+ * model-id substring the activation requires.
+ */
+export interface CodexPreset {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Pool the preset routes through (by id). */
+  poolId: string;
+  /** Optional model-id substring filter used at activation. */
+  model?: string;
+  createdAt: string;
 }
 
 /**
  * Project-level account configuration (`.pi/beautiful-pi.json`).
  * `migratedFromLegacyAt` is the per-project idempotency marker set when the
  * project's legacy `.pi/multi-pass.json` was consumed.
+ *
+ * `poolOverrides`/`chainOverrides` only take effect in trusted projects and
+ * are keyed by global pool/chain name: an override merges onto the global
+ * entry (global config stays the fallback when an override is absent).
  */
 export interface ProjectAccountConfig {
   /** Credential ids allowed in this project; absent/undefined means allow all. */
   allowedCredentialIds?: string[];
+  /** Per-project pool overrides (keyed by global pool name). */
+  poolOverrides?: Record<string, ProjectPoolOverride>;
+  /** Per-project chain overrides (keyed by global chain name). */
+  chainOverrides?: Record<string, ProjectChainOverride>;
   migratedFromLegacyAt?: string;
+}
+
+/** Overrides applied to a global pool in a trusted project. */
+export interface ProjectPoolOverride {
+  enabled?: boolean;
+  credentialIds?: string[];
+}
+
+/** Overrides applied to a global chain in a trusted project. */
+export interface ProjectChainOverride {
+  enabled?: boolean;
+  targets?: ChainTarget[];
 }
 
 /** Structural mirror of pi's AuthStatus (not exported by pi-coding-agent). */
