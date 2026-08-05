@@ -56,6 +56,21 @@ Then reload pi:
 /reload
 ```
 
+### Development (live-link workflow)
+
+`pi install .` copies the package into `~/.pi/agent/npm/node_modules/`;
+changes in the repo are not picked up until you reinstall. To edit and test
+iteratively, replace that copy with a symlink to the repo:
+
+```bash
+ln -s "$(pwd)" ~/.pi/agent/npm/node_modules/beautiful-pi
+```
+
+(Back up the previous copy first if you want to restore it.)
+
+Then `/reload` — every repo change is live on the next reload, no reinstall
+needed. Run `npm run test` and `npx tsc --noEmit` before pushing.
+
 ### Enable themes
 
 Set a theme in pi:
