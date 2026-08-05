@@ -26,7 +26,7 @@ import {
 	fetchOpenAIUsage,
 	formatOpenAIUsage,
 	type OpenAIUsage,
-} from "./openai-usage.ts";
+} from "../shared/openai-usage.ts";
 import {
 	fetchOpenCodeGoUsage,
 	formatOpenCodeGoUsage,

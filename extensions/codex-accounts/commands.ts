@@ -303,7 +303,7 @@ async function cmdAccountQuota(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
     if (report.quota) {
       lines.push(`  ${account.label}  [${account.credentialId}]  ${formatAccountQuota(report.quota)}`);
     } else {
-      lines.push(`  ${account.label}  [${account.credentialId}]  unavailable: ${formatUnavailableReason(report.unavailableReason ?? "network")}`);
+      lines.push(`  ${account.label}  [${account.credentialId}]  unavailable: ${formatUnavailableReason(report.unavailableReason!)}`);
     }
   }
   sendOutput(pi, lines);
@@ -620,6 +620,13 @@ async function cmdPoolStrategy(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
   }
   saveGlobalAccountConfig(result.cfg);
   notify(ctx, `Pool "${name}" strategy: ${strategy}`);
+  const saved = resolvePool(result.cfg, name)!;
+  if (strategy === "scheduled" && !saved.schedule) {
+    notify(ctx, `Pool "${name}" has no schedule yet — it will use round-robin until you run: /codex pool schedule ${name} <HH:MM-HH:MM>`, "warning");
+  }
+  if (strategy === "custom" && !saved.selector) {
+    notify(ctx, `Pool "${name}" has no selector yet — it will use round-robin until you run: /codex pool selector ${name} <command>`, "warning");
+  }
 }
 
 async function cmdPoolSchedule(pi: ExtensionAPI, ctx: ExtensionCommandContext, rest: string): Promise<void> {
@@ -642,7 +649,12 @@ async function cmdPoolSchedule(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
     return;
   }
   if (clear) {
-    saveGlobalAccountConfig(clearPoolSchedule(cfg, name).cfg);
+    const cleared = clearPoolSchedule(cfg, name);
+    if (!cleared.ok) {
+      notify(ctx, `Could not clear schedule: ${cleared.errors.join("; ")}`, "error");
+      return;
+    }
+    saveGlobalAccountConfig(cleared.cfg);
     notify(ctx, `Cleared schedule for pool "${pool.name}"`);
     return;
   }
@@ -652,6 +664,10 @@ async function cmdPoolSchedule(pi: ExtensionAPI, ctx: ExtensionCommandContext, r
     return;
   }
   const result = setPoolSchedule(cfg, name, parsed.schedule);
+  if (!result.ok) {
+    notify(ctx, `Could not set schedule: ${result.errors.join("; ")}`, "error");
+    return;
+  }
   saveGlobalAccountConfig(result.cfg);
   notify(ctx, `Schedule for pool "${pool.name}": ${summarizeSchedule(parsed.schedule)}`);
 }

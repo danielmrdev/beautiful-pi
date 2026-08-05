@@ -503,6 +503,20 @@ describe("/codex pool strategy/schedule/selector", () => {
     assert.ok(lastNotify(env).includes("invalid strategy"));
   });
 
+  test("scheduled without a schedule warns to configure one", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod scheduled");
+    assert.ok(env.notifications.some((n) => n.msg.includes("/codex pool schedule prod")), "setup hint shown");
+  });
+
+  test("custom without a selector warns to configure one", async () => {
+    const env = makeEnv();
+    await withPool(env);
+    await env.handler("pool strategy prod custom");
+    assert.ok(env.notifications.some((n) => n.msg.includes("/codex pool selector prod")), "setup hint shown");
+  });
+
   test("schedule parses windows, days, dates, and roles", async () => {
     const env = makeEnv();
     await withPool(env);

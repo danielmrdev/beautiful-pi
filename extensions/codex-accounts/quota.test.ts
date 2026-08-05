@@ -16,7 +16,7 @@ import {
   type AccountQuota,
 } from "./quota.ts";
 import type { CodexAccount } from "./types.ts";
-import type { OpenAIUsage } from "../footer/openai-usage.ts";
+import type { OpenAIUsage } from "../shared/openai-usage.ts";
 
 let tmpHome: string;
 let originalFetch: typeof globalThis.fetch;
@@ -148,17 +148,17 @@ describe("fetchAccountQuotaReport", () => {
   test("reports unauthenticated without a stored credential (no fetch)", async () => {
     let called = false;
     stubFetch(() => { called = true; return { status: 200, body: {} }; });
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "unauthenticated");
     assert.equal(report.quota, undefined);
     assert.equal(called, false, "no network call for a missing credential");
   });
 
   test("reports expired without a network round-trip", async () => {
-    writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(NOW / 1000) - 60 });
+    writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(Date.now() / 1000) - 60 });
     let called = false;
     stubFetch(() => { called = true; return { status: 200, body: {} }; });
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "expired");
     assert.equal(called, false);
   });
@@ -166,28 +166,28 @@ describe("fetchAccountQuotaReport", () => {
   test("unauthorized response classifies as unauthorized", async () => {
     writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(NOW / 1000) + 3600 });
     stubFetch(() => ({ status: 401, body: {} }));
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "unauthorized");
   });
 
   test("HTTP error classifies as http", async () => {
     writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(NOW / 1000) + 3600 });
     stubFetch(() => ({ status: 503, body: {} }));
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "http");
   });
 
   test("network failure classifies as network", async () => {
     writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(NOW / 1000) + 3600 });
     stubFetch(() => new Error("ECONNRESET"));
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "network");
   });
 
   test("2xx body without recognizable windows classifies as malformed", async () => {
     writeCredential("openai-codex", { type: "oauth", access: "tok", expires: Math.floor(NOW / 1000) + 3600 });
     stubFetch(() => ({ status: 200, body: { hello: "world" } }));
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.equal(report.unavailableReason, "malformed");
   });
 
@@ -202,7 +202,7 @@ describe("fetchAccountQuotaReport", () => {
         },
       },
     }));
-    const report = await fetchAccountQuotaReport(account(), NOW);
+    const report = await fetchAccountQuotaReport(account());
     assert.ok(report.quota);
     assert.equal(report.quota!.status, "healthy");
     assert.equal(report.quota!.fiveHour?.usedPercent, 30);

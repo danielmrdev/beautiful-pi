@@ -13,6 +13,7 @@
  */
 import type { AccountConfig, CodexPool, PoolSchedule } from "./types.ts";
 import {
+  allEligibleMembers,
   isCooldownActive,
   isEligibleMember,
   nextEligibleMember,
@@ -23,38 +24,21 @@ import {
 import type { AccountQuota } from "./quota.ts";
 
 /**
- * All eligible members of an enabled pool, in rotation order starting after
- * the pool's last-used index (wrapping once). Never mutates the pool.
+ * All eligible pool members in rotation order (shared scan from rotation.ts;
+ * the advanced selectors consume the full list, round-robin takes the first).
  */
-export function eligibleMembers(
-  pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
-): EligibleMember[] {
-  if (!pool.enabled || pool.credentialIds.length === 0) return [];
-  const members = pool.credentialIds;
-  const n = members.length;
-  const start = Math.min(Math.max(pool.lastUsedIndex, -1), n - 1);
-  const result: EligibleMember[] = [];
-  for (let step = 1; step <= n; step++) {
-    const index = (start + step) % n;
-    const credentialId = members[index];
-    if (isCooldownActive(state, credentialId, now)) continue;
-    if (!isEligibleMember(credentialId, cfg, ctx, state)) continue;
-    result.push({ credentialId, index });
-  }
-  return result;
-}
+const eligibleMembers = allEligibleMembers;
+export { eligibleMembers };
 
 // ── quota-first ──────────────────────────────────────────────────────────────
 
 /**
  * Pick the healthiest eligible account (most remaining headroom across its
  * usage windows, tie-broken by rotation order). Exhausted members are not
- * selectable while any other data-bearing member exists. Falls back to
- * round-robin when no eligible member has usable quota data.
+ * selectable while any other data-bearing member exists. When no usable quota
+ * data remains, falls back to round-robin — but known-exhausted members are
+ * deprioritized below members whose headroom is unknown, so the fallback never
+ * serves a known-exhausted account while an alternative exists.
  */
 export function selectQuotaFirst(
   pool: CodexPool,
@@ -71,16 +55,22 @@ export function selectQuotaFirst(
     .filter((x): x is { m: EligibleMember; quota: AccountQuota } =>
       x.quota !== undefined && x.quota.status !== "exhausted"
     );
-  if (candidates.length === 0) return nextEligibleMember(pool, cfg, ctx, state, now);
-  let best = candidates[0];
-  for (const candidate of candidates) {
-    const score = candidate.quota.health ?? -1;
-    const bestScore = best.quota.health ?? -1;
-    // Strictly-better score replaces; ties keep the earlier rotation-order
-    // candidate (candidates are already in rotation order).
-    if (score > bestScore) best = candidate;
+  if (candidates.length > 0) {
+    let best = candidates[0];
+    for (const candidate of candidates) {
+      const score = candidate.quota.health ?? -1;
+      const bestScore = best.quota.health ?? -1;
+      // Strictly-better score replaces; ties keep the earlier rotation-order
+      // candidate (candidates are already in rotation order).
+      if (score > bestScore) best = candidate;
+    }
+    return best.m;
   }
-  return best.m;
+  // No non-exhausted data-bearing member: prefer members whose headroom is
+  // unknown over known-exhausted ones, then plain round-robin.
+  const unknownHeadroom = members.find((m) => quotaOf(m.credentialId) === undefined);
+  if (unknownHeadroom) return unknownHeadroom;
+  return nextEligibleMember(pool, cfg, ctx, state, now);
 }
 
 // ── scheduled ────────────────────────────────────────────────────────────────

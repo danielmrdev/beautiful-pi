@@ -18,8 +18,8 @@ import type { Credential } from "@earendil-works/pi-ai";
 import {
   fetchOpenAIUsageDetailed,
   type OpenAIUsage,
-  type UsageFetchResult,
-} from "../footer/openai-usage.ts";
+  type UsageFetchError,
+} from "../shared/openai-usage.ts";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import { authFilePath } from "./store.ts";
 import type { CodexAccount } from "./types.ts";
@@ -46,14 +46,12 @@ export interface AccountQuota {
   sevenDay?: QuotaWindow;
 }
 
-/** Why an account has no usable quota data. */
-export type QuotaUnavailableReason =
-  | "unauthenticated"
-  | "expired"
-  | "unauthorized"
-  | "network"
-  | "http"
-  | "malformed";
+/**
+ * Why an account has no usable quota data. Reuses the shared usage-fetch
+ * classification (missing credential, expired token, network, HTTP,
+ * malformed) — the account layer adds no reason of its own.
+ */
+export type QuotaUnavailableReason = UsageFetchError;
 
 export interface QuotaReport {
   account: CodexAccount;
@@ -109,10 +107,6 @@ export function normalizeAccountQuota(usage: OpenAIUsage | null): AccountQuota |
 
 // ── Per-account fetch ────────────────────────────────────────────────────────
 
-function reasonOf(result: UsageFetchResult): QuotaUnavailableReason | undefined {
-  return result.ok ? undefined : result.reason;
-}
-
 function accessTokenOf(credential: Credential | undefined): { token?: string; expires?: number } {
   if (!credential) return {};
   if (credential.type === "oauth") return { token: credential.access, expires: credential.expires };
@@ -121,13 +115,10 @@ function accessTokenOf(credential: Credential | undefined): { token?: string; ex
 
 /**
  * Fetch + normalize quota for one account. Never throws. An account without
- * a stored credential or with an expired OAuth token is reported with a
- * reason (no network round-trip for expired tokens).
+ * a stored credential is reported as unauthenticated; expired OAuth tokens
+ * are classified by the shared fetcher without a network round-trip.
  */
-export async function fetchAccountQuotaReport(
-  account: CodexAccount,
-  now: number = Date.now(),
-): Promise<QuotaReport> {
+export async function fetchAccountQuotaReport(account: CodexAccount): Promise<QuotaReport> {
   let credential: Credential | undefined;
   try {
     credential = readStoredCredential(account.credentialId, authFilePath());
@@ -136,11 +127,8 @@ export async function fetchAccountQuotaReport(
   }
   const { token, expires } = accessTokenOf(credential);
   if (!token) return { account, unavailableReason: "unauthenticated" };
-  if (typeof expires === "number" && expires > 0 && expires * 1000 <= now) {
-    return { account, unavailableReason: "expired" };
-  }
   const result = await fetchOpenAIUsageDetailed(token, undefined, expires);
-  if (!result.ok) return { account, unavailableReason: reasonOf(result) };
+  if (!result.ok) return { account, unavailableReason: result.reason };
   const quota = normalizeAccountQuota(result.usage);
   if (!quota) return { account, unavailableReason: "malformed" };
   return { account, quota };

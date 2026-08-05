@@ -90,6 +90,33 @@ export function isEligibleMember(
 }
 
 /**
+ * All eligible members of an enabled pool, in rotation order starting after
+ * the pool's last-used index (wrapping once). Never mutates the pool.
+ */
+export function allEligibleMembers(
+  pool: CodexPool,
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+  now: number = Date.now(),
+): EligibleMember[] {
+  if (!pool.enabled || pool.credentialIds.length === 0) return [];
+  const members = pool.credentialIds;
+  const n = members.length;
+  const start = Math.min(Math.max(pool.lastUsedIndex, -1), n - 1);
+  const result: EligibleMember[] = [];
+  for (let step = 1; step <= n; step++) {
+    const index = (start + step) % n;
+    const credentialId = members[index];
+    if (state.attempted.has(credentialId)) continue;
+    if (isCooldownActive(state, credentialId, now)) continue;
+    if (!isEligibleMember(credentialId, cfg, ctx, state)) continue;
+    result.push({ credentialId, index });
+  }
+  return result;
+}
+
+/**
  * Pick the next eligible member of an enabled pool, scanning forward from the
  * pool's last-used index (wrapping once). The pool's `lastUsedIndex` is NOT
  * mutated — the caller persists the returned index.
@@ -101,17 +128,5 @@ export function nextEligibleMember(
   state: RotationState,
   now: number = Date.now(),
 ): EligibleMember | undefined {
-  if (!pool.enabled || pool.credentialIds.length === 0) return undefined;
-  const members = pool.credentialIds;
-  const n = members.length;
-  const start = Math.min(Math.max(pool.lastUsedIndex, -1), n - 1);
-  for (let step = 1; step <= n; step++) {
-    const index = (start + step) % n;
-    const credentialId = members[index];
-    if (state.attempted.has(credentialId)) continue;
-    if (isCooldownActive(state, credentialId, now)) continue;
-    if (!isEligibleMember(credentialId, cfg, ctx, state)) continue;
-    return { credentialId, index };
-  }
-  return undefined;
+  return allEligibleMembers(pool, cfg, ctx, state, now)[0];
 }

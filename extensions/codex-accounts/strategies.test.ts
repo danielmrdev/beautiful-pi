@@ -157,6 +157,22 @@ describe("selectQuotaFirst", () => {
     assert.equal(pick?.credentialId, "openai-codex-2", "round-robin fallback still routes");
   });
 
+  test("fallback prefers unknown-headroom members over known-exhausted ones", () => {
+    const pick = selectQuotaFirst(
+      pool(ids, { lastUsedIndex: -1 }),
+      cfgWith(ids),
+      ctx(),
+      createRotationState(),
+      quotaMap([["openai-codex", quota(0, "exhausted")], ["openai-codex-2", undefined], ["openai-codex-3", quota(0, "exhausted")]]),
+      NOW,
+    );
+    assert.equal(
+      pick?.credentialId,
+      "openai-codex-2",
+      "a member with unknown headroom beats an exhausted member earlier in rotation",
+    );
+  });
+
   test("respects project restrictions via the eligible set", () => {
     const pick = selectQuotaFirst(
       pool(ids),
