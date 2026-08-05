@@ -44,7 +44,8 @@ export interface FailoverContext {
 
 // ── Error classification ─────────────────────────────────────────────────────
 
-const RATE_LIMIT_RE = /\b429\b|rate[\s-]?limit|quota|too many requests/i;
+const RATE_LIMIT_RE =
+  /\b429\b|rate[\s-]?limit|too many requests|quota[^.]{0,16}(exceeded|exhausted)|exceeded[^.]{0,16}quota/i;
 
 export function isCodexRateLimitError(message: string): boolean {
   return RATE_LIMIT_RE.test(message);

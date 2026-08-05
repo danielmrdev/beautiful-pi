@@ -77,6 +77,7 @@ describe("isCodexRateLimitError", () => {
     "Rate limit reached for openai-codex",
     "rate-limit exceeded, retry in 30s",
     "You've exceeded your current quota, please check your plan",
+    "Your quota has been exceeded",
     "too many requests",
   ];
   for (const msg of hits) {
@@ -89,6 +90,9 @@ describe("isCodexRateLimitError", () => {
     "Network error: connection reset",
     "Invalid API key",
     "stop reason length",
+    "Your quota for this project is 1000 tokens",
+    "Check your quota usage in the account dashboard",
+    "exceeded the token limit, check quota limits",
   ];
   for (const msg of misses) {
     test(`ignores: ${msg.slice(0, 40)}`, () => {
@@ -183,6 +187,18 @@ describe("decideFailover", () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
     const decision = await decideFailover(
       { lastUserText: "x", lastProvider: "openai-codex", lastError: "network timeout" },
+      cfg,
+      ctx(),
+      createRotationState(),
+      NOW,
+    );
+    assert.equal(decision.kind, "none");
+  });
+
+  test("an error mentioning quota without a rate-limit condition does not fail over", async () => {
+    const cfg = cfgWith(["openai-codex", "openai-codex-2"], [pool(["openai-codex", "openai-codex-2"])]);
+    const decision = await decideFailover(
+      { lastUserText: "x", lastProvider: "openai-codex", lastError: "Your account quota for this project is 1000 tokens" },
       cfg,
       ctx(),
       createRotationState(),
@@ -352,7 +368,7 @@ describe("failover wiring (agent_end -> agent_settled)", () => {
     const agentSettled = (pi.events.get("agent_settled") ?? [])[0];
     await agentEnd({ messages: [
       { role: "user", content: "same", timestamp: 1 },
-      { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "quota", timestamp: 2 },
+      { role: "assistant", provider: "openai-codex", model: "gpt-5.5", content: [], usage: {}, stopReason: "error", errorMessage: "429 quota exceeded", timestamp: 2 },
     ] }, ctx);
     await agentSettled({}, ctx);
     await agentSettled({}, ctx);
