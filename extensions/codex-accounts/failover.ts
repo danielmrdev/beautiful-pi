@@ -23,7 +23,7 @@ import {
 } from "./rotation.ts";
 import { nextChainMember, chainContainingCredential, chainPoolForCredential } from "./chain.ts";
 import { rotationContextFrom } from "./context.ts";
-import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig, sameTarget } from "./store.ts";
+import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig, poolPointerPersists, chainProgressPersists } from "./store.ts";
 import type { AccountConfig, ChainTarget, CodexChain, CodexPool } from "./types.ts";
 
 /** Structural slice of the extension context the failover needs. */
@@ -210,9 +210,8 @@ export async function actOnFailover(
   // project overrides keep their own unindexed rotation.
   let pools = cfg.pools ?? [];
   if (decision.poolId) {
-    const global = pools.find((p) => p.id === decision.poolId);
     const persist = decision.poolMembers !== undefined
-      ? !!global && global.credentialIds.join("\u0000") === decision.poolMembers.join("\u0000")
+      ? poolPointerPersists(cfg, decision.poolId, decision.poolMembers)
       : true;
     if (persist) {
       pools = pools.map((p) =>
@@ -224,11 +223,8 @@ export async function actOnFailover(
   const toTarget = decision.chainId ? decision.toTargetIndex : undefined;
   if (decision.chainId && toTarget !== undefined) {
     const chainId = decision.chainId;
-    const global = chains.find((c) => c.id === chainId);
     const persist = decision.chainTargets !== undefined
-      ? !!global &&
-        global.targets.length === decision.chainTargets.length &&
-        global.targets.every((t, i) => sameTarget(t, decision.chainTargets![i]))
+      ? chainProgressPersists(cfg, chainId, decision.chainTargets)
       : true;
     if (persist) {
       chains = chains.map((c) =>

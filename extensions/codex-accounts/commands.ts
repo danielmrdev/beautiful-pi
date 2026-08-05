@@ -77,7 +77,8 @@ import {
   loadProjectAccountConfig,
   saveProjectAccountConfig,
   resolveEffectiveConfig,
-  sameTarget,
+  poolPointerPersists,
+  chainProgressPersists,
 } from "./store.ts";
 import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, CodexPreset, PoolSchedule } from "./types.ts";
 
@@ -895,24 +896,6 @@ function loadEffective(ctx: ExtensionCommandContext): AccountConfig {
   if (!ctx.isProjectTrusted()) return global;
   const project = loadProjectAccountConfig(ctx.cwd);
   return project ? resolveEffectiveConfig(global, project) : global;
-}
-
-/**
- * True when the pool's member list is unchanged by a project override, so a
- * member index computed on it can be persisted to the global pool pointer.
- * Overridden pools keep their pointer untouched (rotation restarts fresh per
- * request — the attempted set still guards replays).
- */
-function poolPointerPersists(global: AccountConfig, poolId: string, memberIds: string[]): boolean {
-  const pool = (global.pools ?? []).find((p) => p.id === poolId);
-  return !!pool && pool.credentialIds.join("\u0000") === memberIds.join("\u0000");
-}
-
-/** True when the chain's targets are unchanged by a project override. */
-function chainProgressPersists(global: AccountConfig, chainId: string, targets: ChainTarget[]): boolean {
-  const chain = (global.chains ?? []).find((c) => c.id === chainId);
-  if (!chain || chain.targets.length !== targets.length) return false;
-  return chain.targets.every((t, i) => sameTarget(t, targets[i]));
 }
 
 /**
