@@ -12,5 +12,6 @@
   "toolsOneLine": true,
   "showBanner": true,
   "showFooter": true,
-  "sessionTitle": true
+  "sessionTitle": true,
+  "syncHerdrPaneLabel": true
 }

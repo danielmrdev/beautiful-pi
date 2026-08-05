@@ -35,6 +35,7 @@ export interface BeautifulPiSettings {
   showBanner: boolean;
   showFooter: boolean;
   sessionTitle: boolean;
+  syncHerdrPaneLabel: boolean;
   opencodeGoWorkspaceId?: string;
   opencodeGoAuthCookie?: string;
 }
@@ -58,6 +59,8 @@ const DEFAULTS: BeautifulPiSettings = (() => {
       toolsOneLine: true,
       showBanner: true,
       showFooter: true,
+      sessionTitle: true,
+      syncHerdrPaneLabel: true,
     };
   }
 })();

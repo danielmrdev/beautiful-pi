@@ -7,6 +7,7 @@ import userStyleExtension from "./user-style/index.ts";
 import customMessageExtension from "./custom-message/index.ts";
 import settingsExtension from "./settings/index.ts";
 import sessionTitleExtension from "./session-title/index.ts";
+import herdrPaneSyncExtension from "./herdr-pane-sync/index.ts";
 import codexAccountsExtension from "./codex-accounts/index.ts";
 import compactionCoordinator from "./compaction/coordinator.ts";
 
@@ -15,6 +16,7 @@ export default function (pi: ExtensionAPI) {
   codexAccountsExtension(pi);    // register /codex account + legacy migration
   compactionCoordinator(pi);     // keep compaction engines provider-aware (#7)
   sessionTitleExtension(pi);
+  herdrPaneSyncExtension(pi);
   bannerExtension(pi);
   footerExtension(pi);
   toolsOneLineExtension(pi);

@@ -35,8 +35,9 @@ function buildTabs(s: BeautifulPiSettings): TabDef[] {
       items: [
         { id: "showBanner",    label: "Banner",          currentValue: b(s.showBanner),    values: ON_OFF },
         { id: "showFooter",    label: "Footer",          currentValue: b(s.showFooter),    values: ON_OFF },
-        { id: "sessionTitle",  label: "Session title",   currentValue: b(s.sessionTitle),  values: ON_OFF },
-        { id: "toolsOneLine",  label: "Tools one-line",  currentValue: b(s.toolsOneLine),  values: ON_OFF },
+        { id: "sessionTitle",        label: "Session title",      currentValue: b(s.sessionTitle),        values: ON_OFF },
+        { id: "syncHerdrPaneLabel",   label: "Herdr pane label",   currentValue: b(s.syncHerdrPaneLabel),   values: ON_OFF },
+        { id: "toolsOneLine",        label: "Tools one-line",    currentValue: b(s.toolsOneLine),        values: ON_OFF },
         { id: "indentLevel",   label: "Indent level",    currentValue: String(s.indentLevel), values: INDENT_OPTIONS },
       ],
     },
@@ -88,6 +89,7 @@ function applyChange(current: BeautifulPiSettings, id: string, value: string): v
     case "showBanner":             current.showBanner             = value === "on"; break;
     case "showFooter":             current.showFooter             = value === "on"; break;
     case "sessionTitle":           current.sessionTitle           = value === "on"; break;
+    case "syncHerdrPaneLabel":     current.syncHerdrPaneLabel     = value === "on"; break;
     case "toolsOneLine":           current.toolsOneLine           = value === "on"; break;
     case "indentLevel":            current.indentLevel            = parseInt(value, 10); break;
     case "agentRailColor":         current.agentRailColor         = value; break;
