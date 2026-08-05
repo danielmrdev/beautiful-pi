@@ -581,6 +581,7 @@ export function addPoolMembers(
   const pool = resolvePool(cfg, ref);
   if (!pool) return { cfg, ok: false, errors: [`pool "${ref}" not found`] };
   const { ids, errors } = resolveMemberIds(cfg, memberRefs);
+  if (errors.length > 0) return { cfg, ok: false, errors };
   const merged = [...new Set([...pool.credentialIds, ...ids])];
   return {
     cfg: {

@@ -429,6 +429,17 @@ describe("/codex pool", () => {
     assert.deepEqual(loadGlobalAccountConfig().pools![0].credentialIds, ["openai-codex-2"]);
   });
 
+  test("add rejects unknown member refs without modifying the pool", async () => {
+    const env = makeEnv();
+    await env.handler("account add work");
+    authenticateAll(env);
+    await env.handler("pool create prod work");
+    await env.handler("pool add prod ghost");
+    assert.ok(lastNotify(env).includes("ghost"), "unknown ref surfaced in error");
+    assert.equal(env.notifications.at(-1)?.type, "error");
+    assert.deepEqual(loadGlobalAccountConfig().pools![0].credentialIds, ["openai-codex-2"], "member not added");
+  });
+
   test("delete removes the pool", async () => {
     const env = makeEnv();
     await env.handler("account add work");

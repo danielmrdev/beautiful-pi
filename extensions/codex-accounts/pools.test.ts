@@ -79,13 +79,13 @@ describe("pool ops", () => {
     assert.equal(cfg.pools![0].enabled, true);
   });
 
-  test("addPoolMembers appends valid refs, reports unknown refs", () => {
+  test("addPoolMembers rejects unknown refs without modifying the pool", () => {
     let cfg = cfgWith(account("openai-codex", "work"), account("openai-codex-2", "personal"));
     cfg = createPool(cfg, "prod", ["work"], {}).cfg;
     const result = addPoolMembers(cfg, "prod", ["personal", "ghost"]);
-    assert.equal(result.ok, true);
+    assert.equal(result.ok, false);
     assert.deepEqual(result.errors, ["ghost"]);
-    assert.deepEqual(result.cfg.pools![0].credentialIds, ["openai-codex", "openai-codex-2"]);
+    assert.deepEqual(result.cfg.pools![0].credentialIds, ["openai-codex"], "no partial add");
   });
 
   test("addPoolMembers is idempotent for existing members", () => {
