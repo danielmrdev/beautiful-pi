@@ -35,14 +35,15 @@ import compactionCoordinator, {
   coordinationWarnings,
   CODEX_COMPACTION_PROVIDERS,
 } from "./coordinator.ts";
-
-const CODEX_MODEL = {
-  provider: "openai-codex",
-  api: "openai-codex-responses",
-  id: "gpt-5.5",
-  cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
-const NON_CODEX_MODEL = { provider: "anthropic", api: "completions", id: "claude" };
+import {
+  CODEX_MODEL,
+  NON_CODEX_MODEL,
+  branchWith,
+  makeCtx,
+  makeEvent,
+  stubCodexCompactionSuccess,
+  stubCodexCompactionFailure,
+} from "./fixtures.ts";
 
 interface CompactResult {
   cancel?: boolean;
@@ -85,91 +86,6 @@ afterEach(() => {
   else process.env.PI_BLACKHOLE_SKIP_PROVIDERS = origEnvSkip;
   rmSync(tmpHome, { recursive: true, force: true });
 });
-
-/** JWT with the chatgpt_account_id claim the Codex endpoint requires. */
-function codexToken(): string {
-  const payload = Buffer.from(
-    JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } }),
-  ).toString("base64url");
-  return `h.${payload}.sig`;
-}
-
-function message(id: string, role: string, content = "x"): unknown {
-  return { id, type: "message", message: { role, content } };
-}
-
-function branchWith(n: number): unknown[] {
-  const out: unknown[] = [];
-  for (let i = 0; i < n; i++) {
-    out.push(message(`m${i}`, i % 2 === 0 ? "user" : "assistant", `content ${i}`));
-  }
-  return out;
-}
-
-function makeCtx(model: unknown, branch: unknown[]): Record<string, unknown> {
-  return {
-    mode: "print",
-    cwd: "/tmp/proj",
-    hasUI: false,
-    model,
-    modelRegistry: {
-      getApiKeyAndHeaders: async () => ({ ok: true, apiKey: codexToken(), headers: {} }),
-      getAll: () => [],
-      getProviderAuthStatus: () => ({ configured: true }),
-      hasConfiguredAuth: () => true,
-      registerProvider: () => {},
-    },
-    sessionManager: { getSessionId: () => "s1", getBranch: () => branch },
-    getSystemPrompt: () => "System prompt",
-    abort: () => {},
-  };
-}
-
-function makeEvent(branch: unknown[]): Record<string, unknown> {
-  return {
-    type: "session_before_compact",
-    customInstructions: undefined,
-    branchEntries: branch,
-    preparation: {
-      previousSummary: undefined,
-      fileOps: { read: [], written: [], edited: [] },
-      tokensBefore: 1000,
-      firstKeptEntryId: (branch[0] as { id: string }).id,
-    },
-    reason: "overflow",
-    willRetry: false,
-    signal: new AbortController().signal,
-  };
-}
-
-function stubCodexCompactionSuccess(): void {
-  globalThis.fetch = (async () => {
-    const sse = [
-      'data: {"type":"response.output_item.done","item":{"type":"compaction","id":"cmp-1","encrypted_content":"opaque-checkpoint"}}',
-      "",
-      'data: {"type":"response.completed","response":{"usage":{"output_tokens":12}}}',
-      "",
-      "data: [DONE]",
-      "",
-    ].join("\n");
-    const stream = new ReadableStream({
-      start(c) {
-        c.enqueue(new TextEncoder().encode(sse));
-        c.close();
-      },
-    });
-    return { ok: true, status: 200, body: stream } as unknown as Response;
-  }) as unknown as typeof fetch;
-}
-
-function stubCodexCompactionFailure(): void {
-  globalThis.fetch = (async () => ({
-    ok: false,
-    status: 400,
-    statusText: "Bad Request",
-    text: async () => "bad",
-  })) as unknown as typeof fetch;
-}
 
 /** Wire both engines in the given order (no side effects). */
 function wireEngines(order: "codex-first" | "blackhole-first"): FakePi {

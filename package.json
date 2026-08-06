@@ -35,7 +35,7 @@
     "pack:check": "pnpm pack --dry-run",
     "gitleaks:scan": "gitleaks detect --no-git --verbose -s .",
     "gitleaks:staged": "gitleaks protect --staged --verbose",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node --import=./test/setup.mjs --import=tsx scripts/smoke.mjs"
   },
   "dependencies": {
     "@ogulcancelik/pi-codex-compaction": "0.1.3",
