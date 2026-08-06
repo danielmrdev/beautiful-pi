@@ -243,16 +243,19 @@ describe("/codex account migrate + usage", () => {
     assert.ok(sent.content.includes("global:"));
   });
 
-  test("unknown subcommand shows usage", async () => {
+  test("unknown subcommand shows the section's usage", async () => {
     const env = makeEnv();
     await env.handler("account bogus");
-    assert.ok(lastNotify(env).includes("/codex account"));
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("/codex account"));
+    assert.equal(env.notifications.length, 0, "help goes to the chat, not a toast");
   });
 
-  test("unknown section shows usage", async () => {
+  test("unknown section shows the full usage", async () => {
     const env = makeEnv();
     await env.handler("bogus list");
-    assert.ok(lastNotify(env).includes("subcommand"));
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("subcommand"));
   });
 });
 
@@ -282,6 +285,17 @@ describe("/codex argument completions", () => {
     assert.ok(items.includes("account add"), "add listed");
     assert.ok(items.includes("account switch"), "switch listed");
     assert.ok(items.includes("account quota"), "quota listed");
+  });
+
+  test("exact section name (no trailing space) reveals its subcommands", () => {
+    assert.ok(values(codexArgumentCompletions("pool")).includes("pool create"), "pool subs shown");
+    assert.ok(values(codexArgumentCompletions("pool")).includes("pool use"));
+    assert.ok(values(codexArgumentCompletions("account")).includes("account add"), "account subs shown");
+    assert.ok(values(codexArgumentCompletions("chain")).includes("chain use"));
+    assert.ok(values(codexArgumentCompletions("preset")).includes("preset activate"));
+    assert.ok(values(codexArgumentCompletions("project")).includes("project show"));
+    // Case-insensitive exact match.
+    assert.ok(values(codexArgumentCompletions("Pool")).includes("pool list"));
   });
 
   test("subcommands filtered by partial prefix", () => {
@@ -339,6 +353,26 @@ describe("/codex argument completions", () => {
     const cmd = pi.commands.get("codex");
     assert.equal(typeof cmd.getArgumentCompletions, "function", "/codex exposes getArgumentCompletions");
     assert.deepEqual(cmd.getArgumentCompletions("pool us").map((i: any) => i.value), ["pool use"]);
+  });
+});
+
+describe("/codex bare section", () => {
+  test("bare section sends only its own usage block", async () => {
+    const env = makeEnv();
+    await env.handler("pool");
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("/codex pool <subcommand>"), "pool header shown");
+    assert.ok(sent.content.includes("create <name> <member...>"), "pool subs listed");
+    assert.ok(!sent.content.includes("account add"), "other sections not shown");
+    assert.equal(env.notifications.length, 0, "no toast — help goes to the chat");
+  });
+
+  test("bare /codex shows the full usage", async () => {
+    const env = makeEnv();
+    await env.handler("");
+    const sent = env.sent[env.sent.length - 1];
+    assert.ok(sent.content.includes("/codex account <subcommand>"));
+    assert.ok(sent.content.includes("/codex project <subcommand>"));
   });
 });
 

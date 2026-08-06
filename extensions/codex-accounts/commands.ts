@@ -82,67 +82,89 @@ import {
 } from "./store.ts";
 import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, PoolSchedule } from "./types.ts";
 
-const USAGE = [
-  "/codex account <subcommand>",
+/**
+ * Per-section usage blocks. A bare `/codex <section>` (no subcommand) prints
+ * only its own block; `USAGE` below composes them for unknown input.
+ */
+const SECTION_USAGE: Record<string, string[]> = {
+  account: [
+    "/codex account <subcommand>",
+    "",
+    "  add [label]      create a new Codex account",
+    "  login [ref]      authenticate the account (shows the /login command)",
+    "  logout [ref]     remove the stored credential (shows the /logout command)",
+    "  remove [ref]     remove the account configuration entry",
+    "  switch [ref]     switch the active model to the account",
+    "  list             list accounts with auth status",
+    "  status [ref]     detailed status for one account",
+    "  quota [ref]      inspect quota windows (5h/7d usage) per account",
+    "  migrate          run legacy multi-pass config migration",
+  ],
+  pool: [
+    "/codex pool <subcommand>",
+    "",
+    "  create <name> <member...>   create a pool from account refs",
+    "  list                        list pools with members",
+    "  inspect <pool>              per-member eligibility",
+    "  enable <pool>               re-enable a pool",
+    "  disable <pool>              disable a pool (no rotation/failover)",
+    "  delete <pool>               remove the pool",
+    "  add <pool> <member...>      add members",
+    "  remove <pool> <member...>   remove members",
+    "  use <pool>                  select a member (round-robin, quota-first, scheduled, or custom)",
+    "  strategy <pool> <round-robin|quota-first|scheduled|custom>",
+    "  schedule <pool> [<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]",
+    "  schedule clear <pool>       remove the schedule",
+    "  selector <pool> <command>   custom member selector (outputs a member ref)",
+    "  selector clear <pool>       remove the selector",
+    "",
+    "days <spec>: everyday | weekdays | weekend | sun,mon,... | mon-fri ranges",
+    "roles: <member>=<primary|backup>  (backup members used when no primary is eligible)",
+  ],
+  chain: [
+    "/codex chain <subcommand>",
+    "",
+    "  create <name> <target...>   ordered fallback chain (targets: pool or account refs)",
+    "  list                        list chains with targets",
+    "  inspect <chain>             per-target eligibility",
+    "  use <chain>                 walk targets (each pool uses its strategy) and activate",
+    "  enable <chain> / disable <chain>",
+    "  delete <chain>              remove the chain",
+    "  add <chain> <target...>     append targets",
+    "  remove <chain> <target...>  remove targets",
+  ],
+  preset: [
+    "/codex preset <subcommand>",
+    "",
+    "  create <name> <pool> [model <prefix>]   named routing preset",
+    "  list / inspect <preset>",
+    "  activate <preset>          resolve the best eligible member and switch to it",
+    "  enable <preset> / disable <preset> / delete <preset>",
+  ],
+  project: [
+    "/codex project <subcommand>   (trusted projects only; stored in .pi/beautiful-pi.json)",
+    "",
+    "  allow <account...>         restrict this project to the given accounts",
+    "  allow all                  clear the project account restriction",
+    "  pool <name> <member...>    override a global pool's members for this project",
+    "  pool enable|disable|clear <name>",
+    "  chain <name> <target...>   override a global chain's targets for this project",
+    "  chain enable|disable|clear <name>",
+    "  show                       effective (global + project) config",
+  ],
+};
+
+const USAGE_LINES = [
+  ...SECTION_USAGE.account,
   "",
-  "  add [label]      create a new Codex account",
-  "  login [ref]      authenticate the account (shows the /login command)",
-  "  logout [ref]     remove the stored credential (shows the /logout command)",
-  "  remove [ref]     remove the account configuration entry",
-  "  switch [ref]     switch the active model to the account",
-  "  list             list accounts with auth status",
-  "  status [ref]     detailed status for one account",
-  "  quota [ref]      inspect quota windows (5h/7d usage) per account",
-  "  migrate          run legacy multi-pass config migration",
+  ...SECTION_USAGE.pool,
   "",
-  "/codex pool <subcommand>",
+  ...SECTION_USAGE.chain,
   "",
-  "  create <name> <member...>   create a pool from account refs",
-  "  list                        list pools with members",
-  "  inspect <pool>              per-member eligibility",
-  "  enable <pool>               re-enable a pool",
-  "  disable <pool>              disable a pool (no rotation/failover)",
-  "  delete <pool>               remove the pool",
-  "  add <pool> <member...>      add members",
-  "  remove <pool> <member...>   remove members",
-  "  use <pool>                  select a member (round-robin, quota-first, scheduled, or custom)",
-  "  strategy <pool> <round-robin|quota-first|scheduled|custom>",
-  "  schedule <pool> [<HH:MM-HH:MM>,...] [days <spec>] [from <date>] [to <date>] [roles <member>=<role> ...]",
-  "  schedule clear <pool>       remove the schedule",
-  "  selector <pool> <command>   custom member selector (outputs a member ref)",
-  "  selector clear <pool>       remove the selector",
+  ...SECTION_USAGE.preset,
   "",
-  "days <spec>: everyday | weekdays | weekend | sun,mon,... | mon-fri ranges",
-  "roles: <member>=<primary|backup>  (backup members used when no primary is eligible)",
-  "",
-  "/codex chain <subcommand>",
-  "",
-  "  create <name> <target...>   ordered fallback chain (targets: pool or account refs)",
-  "  list                        list chains with targets",
-  "  inspect <chain>             per-target eligibility",
-  "  use <chain>                 walk targets (each pool uses its strategy) and activate",
-  "  enable <chain> / disable <chain>",
-  "  delete <chain>              remove the chain",
-  "  add <chain> <target...>     append targets",
-  "  remove <chain> <target...>  remove targets",
-  "",
-  "/codex preset <subcommand>",
-  "",
-  "  create <name> <pool> [model <prefix>]   named routing preset",
-  "  list / inspect <preset>",
-  "  activate <preset>          resolve the best eligible member and switch to it",
-  "  enable <preset> / disable <preset> / delete <preset>",
-  "",
-  "/codex project <subcommand>   (trusted projects only; stored in .pi/beautiful-pi.json)",
-  "",
-  "  allow <account...>         restrict this project to the given accounts",
-  "  allow all                  clear the project account restriction",
-  "  pool <name> <member...>    override a global pool's members for this project",
-  "  pool enable|disable|clear <name>",
-  "  chain <name> <target...>   override a global chain's targets for this project",
-  "  chain enable|disable|clear <name>",
-  "  show                       effective (global + project) config",
-].join("\n");
+  ...SECTION_USAGE.project,
+];
 
 function notify(ctx: ExtensionCommandContext, message: string, type: "info" | "warning" | "error" = "info"): void {
   if (ctx.hasUI) ctx.ui.notify(message, type);
@@ -1509,9 +1531,21 @@ export function codexArgumentCompletions(argumentPrefix: string): AutocompleteIt
   const trailingSpace = /\s$/.test(argumentPrefix);
   const tokens = argumentPrefix.trim().split(/\s+/).filter(Boolean);
 
-  // Completing the section: "/codex " or "/codex acc".
+  // Completing the section: "/codex " or "/codex acc". An exact section
+  // name (e.g. "/codex pool") reveals that section's subcommands directly
+  // instead of just echoing the section itself.
   if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
     const sectionPrefix = tokens[0] ?? "";
+    if (tokens.length === 1 && !trailingSpace) {
+      const exact = SECTION_SPECS.find((s) => s.name.toLowerCase() === sectionPrefix.toLowerCase());
+      if (exact) {
+        return exact.subs.map((sub) => ({
+          value: `${exact.name} ${sub.name}`,
+          label: `${exact.name} ${sub.name}`,
+          description: sub.desc,
+        }));
+      }
+    }
     const items = SECTION_SPECS
       .filter((s) => startsWithFold(s.name, sectionPrefix))
       .map((s) => ({ value: s.name, label: s.name, description: s.desc }));
@@ -1566,7 +1600,7 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "quota":  await cmdAccountQuota(pi, ctx, ref); break;
           case "migrate": await cmdMigrate(pi, ctx); break;
           default:
-            notify(ctx, USAGE, "info");
+            sendOutput(pi, SECTION_USAGE[section]);
         }
         return;
       }
@@ -1586,7 +1620,7 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "schedule": await cmdPoolSchedule(pi, ctx, restArgs); break;
           case "selector": await cmdPoolSelector(pi, ctx, restArgs); break;
           default:
-            notify(ctx, USAGE, "info");
+            sendOutput(pi, SECTION_USAGE[section]);
         }
         return;
       }
@@ -1603,7 +1637,7 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "add":     await cmdChainAdd(pi, ctx, restArgs); break;
           case "remove":  await cmdChainRemove(pi, ctx, restArgs); break;
           default:
-            notify(ctx, USAGE, "info");
+            sendOutput(pi, SECTION_USAGE[section]);
         }
         return;
       }
@@ -1618,7 +1652,7 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "disable":  await cmdPresetSetEnabled(pi, ctx, restArgs.trim(), false); break;
           case "delete":   await cmdPresetDelete(pi, ctx, restArgs.trim()); break;
           default:
-            notify(ctx, USAGE, "info");
+            sendOutput(pi, SECTION_USAGE[section]);
         }
         return;
       }
@@ -1630,11 +1664,11 @@ export function registerCodexCommand(pi: ExtensionAPI): void {
           case "chain":  await cmdProjectChain(ctx, restArgs); break;
           case "show":   await cmdProjectShow(pi, ctx); break;
           default:
-            notify(ctx, USAGE, "info");
+            sendOutput(pi, SECTION_USAGE[section]);
         }
         return;
       }
-      notify(ctx, USAGE, "info");
+      sendOutput(pi, USAGE_LINES);
     },
   });
 }
