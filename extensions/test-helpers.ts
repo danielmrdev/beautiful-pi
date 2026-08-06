@@ -3,6 +3,8 @@
  * Only covers methods used by beautiful-pi extensions.
  */
 import type { EventBus, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createSelectionContext, type RotationContext, type RotationState, type SelectionContext } from "./codex-accounts/rotation.ts";
+import type { AccountConfig } from "./codex-accounts/types.ts";
 
 interface RecordedEvents extends EventBus {
   get(name: string): Function[] | undefined;
@@ -73,3 +75,18 @@ export function fakePi(): FakePi {
     setSessionName(_name: string) {},
   } as any;
 }
+
+/**
+ * Bundle the selection inputs the way the codex-accounts selection functions
+ * expect them. Tests inject a fixed `now` for deterministic cooldown and
+ * schedule evaluation.
+ */
+export function sel(
+  cfg: AccountConfig,
+  rotCtx: RotationContext,
+  state: RotationState,
+  now: number,
+): SelectionContext {
+  return createSelectionContext(cfg, rotCtx, state, now);
+}
+

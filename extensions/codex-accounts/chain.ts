@@ -16,8 +16,7 @@ import {
   nextEligibleMember,
   type EligibleMember,
   type MemberUnavailableReason,
-  type RotationContext,
-  type RotationState,
+  type SelectionContext,
 } from "./rotation.ts";
 import { resolvePoolById } from "./store.ts";
 
@@ -38,10 +37,7 @@ export interface ChainWalkResult {
  */
 export type PoolMemberPicker = (
   pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number,
+  sel: SelectionContext,
 ) => EligibleMember | undefined | Promise<EligibleMember | undefined>;
 
 /** Chain-layer reason: the shared ones plus cooldown. */
@@ -54,34 +50,25 @@ export type ChainMemberUnavailableReason = MemberUnavailableReason | "cooling do
  */
 export function memberUnavailableReason(
   credentialId: string,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
+  sel: SelectionContext,
 ): ChainMemberUnavailableReason | undefined {
-  const reason = eligibilityReason(credentialId, cfg, ctx, state);
+  const reason = eligibilityReason(credentialId, sel);
   if (reason) return reason;
-  if (isCooldownActive(state, credentialId, now)) return "cooling down";
+  if (isCooldownActive(sel.state, credentialId, sel.now)) return "cooling down";
   return undefined;
 }
 
 /** One-line eligibility status of a chain target. */
-export function chainTargetStatus(
-  target: ChainTarget,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
-): string {
+export function chainTargetStatus(target: ChainTarget, sel: SelectionContext): string {
   if (target.kind === "account") {
-    const reason = memberUnavailableReason(target.credentialId, cfg, ctx, state, now);
+    const reason = memberUnavailableReason(target.credentialId, sel);
     return `account ${target.credentialId}${reason ? `: ${reason}` : ": eligible"}`;
   }
-  const pool = resolvePoolById(cfg, target.poolId);
+  const pool = resolvePoolById(sel.cfg, target.poolId);
   if (!pool) return `pool ${target.poolId}: not found`;
   if (!pool.enabled) return `pool ${pool.name}: disabled`;
   if (pool.credentialIds.length === 0) return `pool ${pool.name}: no members`;
-  if (allEligibleMembers(pool, cfg, ctx, state, now).length > 0) {
+  if (allEligibleMembers(pool, sel).length > 0) {
     // Quota-first pools live-check exhaustion at use time; the status line
     // cannot see the network, so it says so instead of claiming "eligible".
     const note =
@@ -91,7 +78,7 @@ export function chainTargetStatus(
     return `pool ${pool.name}: eligible${note}`;
   }
   const reasons = pool.credentialIds
-    .map((id) => memberUnavailableReason(id, cfg, ctx, state, now))
+    .map((id) => memberUnavailableReason(id, sel))
     .filter((r): r is ChainMemberUnavailableReason => r !== undefined);
   const summary = [...new Set(reasons)].join(", ");
   return `pool ${pool.name}: no eligible member${summary ? ` (${summary})` : ""}`;
@@ -138,10 +125,7 @@ export function chainPoolForCredential(
  */
 export async function walkChain(
   chain: CodexChain,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number,
+  sel: SelectionContext,
   pick: PoolMemberPicker,
 ): Promise<ChainWalkResult | undefined> {
   if (!chain.enabled) return undefined;
@@ -152,20 +136,20 @@ export async function walkChain(
   for (let i = start; i < targets.length; i++) {
     const target = targets[i];
     if (target.kind === "pool") {
-      const pool = resolvePoolById(cfg, target.poolId);
+      const pool = resolvePoolById(sel.cfg, target.poolId);
       if (!pool || !pool.enabled || pool.credentialIds.length === 0) {
-        skipped.push(chainTargetStatus(target, cfg, ctx, state, now));
+        skipped.push(chainTargetStatus(target, sel));
         continue;
       }
-      const member = await pick(pool, cfg, ctx, state, now);
+      const member = await pick(pool, sel);
       if (!member) {
-        skipped.push(chainTargetStatus(target, cfg, ctx, state, now));
+        skipped.push(chainTargetStatus(target, sel));
         continue;
       }
       return { member, pool, targetIndex: i, skipped };
     }
-    if (memberUnavailableReason(target.credentialId, cfg, ctx, state, now)) {
-      skipped.push(chainTargetStatus(target, cfg, ctx, state, now));
+    if (memberUnavailableReason(target.credentialId, sel)) {
+      skipped.push(chainTargetStatus(target, sel));
       continue;
     }
     return { member: { credentialId: target.credentialId, index: -1 }, targetIndex: i, skipped };
@@ -181,10 +165,7 @@ export async function walkChain(
  */
 export function nextChainMember(
   chain: CodexChain,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
+  sel: SelectionContext,
 ): Promise<ChainWalkResult | undefined> {
-  return walkChain(chain, cfg, ctx, state, now, nextEligibleMember);
+  return walkChain(chain, sel, nextEligibleMember);
 }

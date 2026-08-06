@@ -11,15 +11,14 @@
  * down, authenticated, project-allowed), scanned in rotation order starting
  * after the pool's last-used index.
  */
-import type { AccountConfig, CodexPool, PoolSchedule } from "./types.ts";
+import type { CodexPool, PoolSchedule } from "./types.ts";
 import {
   allEligibleMembers,
   isCooldownActive,
   isEligibleMember,
   nextEligibleMember,
   type EligibleMember,
-  type RotationContext,
-  type RotationState,
+  type SelectionContext,
 } from "./rotation.ts";
 import { WEEKDAYS, WEEKEND, isScheduleActive, memberRoleOf } from "./schedule.ts";
 import type { AccountQuota } from "./quota.ts";
@@ -51,12 +50,9 @@ export { eligibleMembers };
  */
 export function selectQuotaFirst(
   pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
+  sel: SelectionContext,
   quotaOf: (credentialId: string) => AccountQuota | undefined,
-  now: number = Date.now(),
-  members: EligibleMember[] = eligibleMembers(pool, cfg, ctx, state, now),
+  members: EligibleMember[] = eligibleMembers(pool, sel),
 ): EligibleMember | undefined {
   if (members.length === 0) return undefined;
   const candidates = members
@@ -79,7 +75,7 @@ export function selectQuotaFirst(
   // unknown over known-exhausted ones, then plain round-robin.
   const unknownHeadroom = members.find((m) => quotaOf(m.credentialId) === undefined);
   if (unknownHeadroom) return unknownHeadroom;
-  return nextEligibleMember(pool, cfg, ctx, state, now);
+  return nextEligibleMember(pool, sel);
 }
 
 // ── scheduled ────────────────────────────────────────────────────────────────
@@ -93,17 +89,15 @@ export function selectQuotaFirst(
  */
 export function selectScheduled(
   pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
+  sel: SelectionContext,
   schedule: PoolSchedule | undefined,
-  now: Date,
   members?: EligibleMember[],
 ): EligibleMember | undefined {
+  const now = new Date(sel.now);
   if (!isScheduleActive(schedule, now)) {
-    return (members ?? eligibleMembers(pool, cfg, ctx, state, now.getTime()))[0];
+    return (members ?? eligibleMembers(pool, sel))[0];
   }
-  const list = members ?? eligibleMembers(pool, cfg, ctx, state, now.getTime());
+  const list = members ?? eligibleMembers(pool, sel);
   if (list.length === 0) return undefined;
   const primaries = list.filter((m) => memberRoleOf(schedule, m.credentialId) === "primary");
   if (primaries.length > 0) return primaries[0];
@@ -120,20 +114,17 @@ export function selectScheduled(
  */
 export function resolveCustomSelection(
   pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
+  sel: SelectionContext,
   ref: string | undefined,
-  now: number = Date.now(),
 ): EligibleMember | undefined {
   if (!ref) return undefined;
-  const account = cfg.accounts.find(
+  const account = sel.cfg.accounts.find(
     (a) => a.id === ref.trim() || a.credentialId === ref.trim() || a.label === ref.trim(),
   );
   if (!account) return undefined;
   const index = pool.credentialIds.indexOf(account.credentialId);
   if (index < 0) return undefined;
-  if (isCooldownActive(state, account.credentialId, now)) return undefined;
-  if (!isEligibleMember(account.credentialId, cfg, ctx, state)) return undefined;
+  if (isCooldownActive(sel.state, account.credentialId, sel.now)) return undefined;
+  if (!isEligibleMember(account.credentialId, sel)) return undefined;
   return { credentialId: account.credentialId, index };
 }

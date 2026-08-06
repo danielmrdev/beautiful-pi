@@ -9,6 +9,7 @@ import {
   createRotationState,
   markCooldown,
 } from "./rotation.ts";
+import { sel } from "../test-helpers.ts";
 import { nextChainMember, chainTargetStatus } from "./chain.ts";
 import type { AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool } from "./types.ts";
 
@@ -73,7 +74,7 @@ describe("nextChainMember", () => {
       { kind: "pool", poolId: "p1" },
       { kind: "account", credentialId: "openai-codex-3" },
     ]);
-    const walk = await nextChainMember(c, cfgWithPools, ctx(), createRotationState(), NOW);
+    const walk = await nextChainMember(c, sel(cfgWithPools, ctx(), createRotationState(), NOW));
     assert.equal(walk?.member.credentialId, "openai-codex", "first member of first pool");
     assert.equal(walk?.pool?.id, "p1");
     assert.equal(walk?.targetIndex, 0);
@@ -90,7 +91,7 @@ describe("nextChainMember", () => {
       { kind: "pool", poolId: "p1" },
       { kind: "pool", poolId: "p2" },
     ]);
-    const walk = await nextChainMember(c, { ...cfg, pools }, ctx(), createRotationState(), NOW);
+    const walk = await nextChainMember(c, sel({ ...cfg, pools }, ctx(), createRotationState(), NOW));
     assert.equal(walk?.member.credentialId, "openai-codex-2");
     assert.equal(walk?.targetIndex, 1);
     assert.ok(walk?.skipped[0].includes("disabled"));
@@ -105,20 +106,24 @@ describe("nextChainMember", () => {
     // openai-codex unauthenticated -> skipped, openai-codex-2 eligible.
     const walk = await nextChainMember(
       c,
-      { ...cfg, pools },
-      ctx({ auth: new Set(["openai-codex-2"]) }),
-      createRotationState(),
-      NOW,
+      sel(
+        { ...cfg, pools },
+        ctx({ auth: new Set(["openai-codex-2"]) }),
+        createRotationState(),
+        NOW,
+      ),
     );
     assert.equal(walk?.member.credentialId, "openai-codex-2", "unauth member skipped");
     // Now also restrict openai-codex-2: no member left.
     const restricted = (id: string) => id !== "openai-codex-2";
     const noWalk = await nextChainMember(
       c,
-      { ...cfg, pools },
-      ctx({ auth: new Set(["openai-codex-2"]), allowed: restricted }),
-      createRotationState(),
-      NOW,
+      sel(
+        { ...cfg, pools },
+        ctx({ auth: new Set(["openai-codex-2"]), allowed: restricted }),
+        createRotationState(),
+        NOW,
+      ),
     );
     assert.equal(noWalk, undefined, "all members unavailable -> no member");
   });
@@ -130,10 +135,7 @@ describe("nextChainMember", () => {
     markCooldown(state, "openai-codex", 60, NOW);
     const walk = await nextChainMember(
       chain([{ kind: "pool", poolId: "p1" }]),
-      { ...cfg, pools },
-      ctx(),
-      state,
-      NOW,
+      sel({ ...cfg, pools }, ctx(), state, NOW),
     );
     assert.equal(walk?.member.credentialId, "openai-codex-2");
   });
@@ -141,7 +143,7 @@ describe("nextChainMember", () => {
   test("account targets are used directly when eligible", async () => {
     const cfg = cfgWith(["openai-codex-2"]);
     const c = chain([{ kind: "account", credentialId: "openai-codex-2" }]);
-    const walk = await nextChainMember(c, cfg, ctx(), createRotationState(), NOW);
+    const walk = await nextChainMember(c, sel(cfg, ctx(), createRotationState(), NOW));
     assert.equal(walk?.member.credentialId, "openai-codex-2");
     assert.equal(walk?.pool, undefined);
     assert.equal(walk?.member.index, -1, "no pool pointer for account targets");
@@ -160,11 +162,11 @@ describe("nextChainMember", () => {
       [{ kind: "pool", poolId: "p1" }, { kind: "pool", poolId: "p2" }],
       { lastUsedTargetIndex: 0 },
     );
-    const walk = await nextChainMember(c, { ...cfg, pools }, ctx(), state, NOW);
+    const walk = await nextChainMember(c, sel({ ...cfg, pools }, ctx(), state, NOW));
     assert.equal(walk?.member.credentialId, "openai-codex-2", "rotates past failed member in same pool");
     assert.equal(walk?.targetIndex, 0, "chain progress stays on the failed target's pool first");
     state.attempted.add("openai-codex-2");
-    const second = await nextChainMember(c, { ...cfg, pools }, ctx(), state, NOW);
+    const second = await nextChainMember(c, sel({ ...cfg, pools }, ctx(), state, NOW));
     assert.equal(second?.member.credentialId, "openai-codex-3", "pool exhausted -> next target");
     assert.equal(second?.targetIndex, 1);
   });
@@ -172,15 +174,15 @@ describe("nextChainMember", () => {
   test("disabled chain yields no member", async () => {
     const cfg = cfgWith(["openai-codex"]);
     const c = chain([{ kind: "account", credentialId: "openai-codex" }], { enabled: false });
-    assert.equal(await nextChainMember(c, cfg, ctx(), createRotationState(), NOW), undefined);
+    assert.equal(await nextChainMember(c, sel(cfg, ctx(), createRotationState(), NOW)), undefined);
   });
 
   test("missing pool target is skipped with a reason", async () => {
     const cfg = cfgWith(["openai-codex"]);
     const c = chain([{ kind: "pool", poolId: "ghost" }]);
-    const walk = await nextChainMember(c, cfg, ctx(), createRotationState(), NOW);
+    const walk = await nextChainMember(c, sel(cfg, ctx(), createRotationState(), NOW));
     assert.equal(walk, undefined);
-    assert.equal(chainTargetStatus({ kind: "pool", poolId: "ghost" }, cfg, ctx(), createRotationState(), NOW), "pool ghost: not found");
+    assert.equal(chainTargetStatus({ kind: "pool", poolId: "ghost" }, sel(cfg, ctx(), createRotationState(), NOW)), "pool ghost: not found");
   });
 });
 
@@ -190,18 +192,18 @@ describe("chainTargetStatus", () => {
     const pools = [pool("p1", "prod", ["openai-codex"])];
     const state = createRotationState();
     const c = ctx();
-    assert.equal(chainTargetStatus({ kind: "account", credentialId: "openai-codex" }, cfg, c, state, NOW), "account openai-codex: eligible");
+    assert.equal(chainTargetStatus({ kind: "account", credentialId: "openai-codex" }, sel(cfg, c, state, NOW)), "account openai-codex: eligible");
     assert.equal(
-      chainTargetStatus({ kind: "account", credentialId: "openai-codex" }, cfg, ctx({ auth: new Set() }), state, NOW),
+      chainTargetStatus({ kind: "account", credentialId: "openai-codex" }, sel(cfg, ctx({ auth: new Set() }), state, NOW)),
       "account openai-codex: not authenticated",
     );
     assert.equal(
-      chainTargetStatus({ kind: "pool", poolId: "p1" }, { ...cfg, pools }, c, state, NOW),
+      chainTargetStatus({ kind: "pool", poolId: "p1" }, sel({ ...cfg, pools }, c, state, NOW)),
       "pool prod: eligible",
     );
     markCooldown(state, "openai-codex", 60, NOW);
     assert.ok(
-      chainTargetStatus({ kind: "pool", poolId: "p1" }, { ...cfg, pools }, c, state, NOW).includes("no eligible member"),
+      chainTargetStatus({ kind: "pool", poolId: "p1" }, sel({ ...cfg, pools }, c, state, NOW)).includes("no eligible member"),
     );
   });
 });
@@ -212,6 +214,6 @@ test("chainTargetStatus notes the live quota check for quota-first pools", () =>
     accounts: [account("openai-codex-2")],
     pools: [pool("p1", "prod", ["openai-codex-2"], { strategy: "quota-first" })],
   };
-  const status = chainTargetStatus({ kind: "pool", poolId: "p1" }, cfg, ctx(), createRotationState(), NOW);
+  const status = chainTargetStatus({ kind: "pool", poolId: "p1" }, sel(cfg, ctx(), createRotationState(), NOW));
   assert.match(status, /eligible.*live quota check on use/);
 });

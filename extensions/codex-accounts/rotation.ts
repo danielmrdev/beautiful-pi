@@ -63,6 +63,32 @@ export interface RotationContext {
   allowed(credentialId: string): boolean;
 }
 
+/**
+ * Everything a member-selection decision needs, bundled so the
+ * `(cfg, ctx, state, now)` tuple is threaded as one value instead of a data
+ * clump through rotation, strategies, chains, and the commands.
+ */
+export interface SelectionContext {
+  /** Effective account config (global, or merged with trusted project overrides). */
+  cfg: AccountConfig;
+  /** Eligibility predicates (auth status, project restriction). */
+  ctx: RotationContext;
+  /** Rotation state (cooldowns + per-request attempted set). */
+  state: RotationState;
+  /** Evaluation time as ms epoch — cooldown expiry and schedule windows. */
+  now: number;
+}
+
+/** Bundle the selection inputs into one context value. */
+export function createSelectionContext(
+  cfg: AccountConfig,
+  ctx: RotationContext,
+  state: RotationState,
+  now: number = Date.now(),
+): SelectionContext {
+  return { cfg, ctx, state, now };
+}
+
 export interface EligibleMember {
   credentialId: string;
   /** Index into the pool's credentialIds (the new round-robin pointer). */
@@ -87,14 +113,12 @@ export type MemberUnavailableReason =
  */
 export function eligibilityReason(
   credentialId: string,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
+  sel: SelectionContext,
 ): MemberUnavailableReason | undefined {
-  if (!cfg.accounts.some((a) => a.credentialId === credentialId)) return "no account entry";
-  if (state.attempted.has(credentialId)) return "already attempted";
-  if (!ctx.authConfigured(credentialId)) return "not authenticated";
-  if (!ctx.allowed(credentialId)) return "restricted in this project";
+  if (!sel.cfg.accounts.some((a) => a.credentialId === credentialId)) return "no account entry";
+  if (sel.state.attempted.has(credentialId)) return "already attempted";
+  if (!sel.ctx.authConfigured(credentialId)) return "not authenticated";
+  if (!sel.ctx.allowed(credentialId)) return "restricted in this project";
   return undefined;
 }
 
@@ -105,26 +129,15 @@ export function eligibilityReason(
  * membership are checked by the callers (membership is implied by the scan;
  * cooldown lives next to the call sites).
  */
-export function isEligibleMember(
-  credentialId: string,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-): boolean {
-  return eligibilityReason(credentialId, cfg, ctx, state) === undefined;
+export function isEligibleMember(credentialId: string, sel: SelectionContext): boolean {
+  return eligibilityReason(credentialId, sel) === undefined;
 }
 
 /**
  * All eligible members of an enabled pool, in rotation order starting after
  * the pool's last-used index (wrapping once). Never mutates the pool.
  */
-export function allEligibleMembers(
-  pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
-): EligibleMember[] {
+export function allEligibleMembers(pool: CodexPool, sel: SelectionContext): EligibleMember[] {
   if (!pool.enabled || pool.credentialIds.length === 0) return [];
   const members = pool.credentialIds;
   const n = members.length;
@@ -133,9 +146,9 @@ export function allEligibleMembers(
   for (let step = 1; step <= n; step++) {
     const index = (start + step) % n;
     const credentialId = members[index];
-    if (state.attempted.has(credentialId)) continue;
-    if (isCooldownActive(state, credentialId, now)) continue;
-    if (!isEligibleMember(credentialId, cfg, ctx, state)) continue;
+    if (sel.state.attempted.has(credentialId)) continue;
+    if (isCooldownActive(sel.state, credentialId, sel.now)) continue;
+    if (!isEligibleMember(credentialId, sel)) continue;
     result.push({ credentialId, index });
   }
   return result;
@@ -146,12 +159,6 @@ export function allEligibleMembers(
  * pool's last-used index (wrapping once). The pool's `lastUsedIndex` is NOT
  * mutated — the caller persists the returned index.
  */
-export function nextEligibleMember(
-  pool: CodexPool,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
-): EligibleMember | undefined {
-  return allEligibleMembers(pool, cfg, ctx, state, now)[0];
+export function nextEligibleMember(pool: CodexPool, sel: SelectionContext): EligibleMember | undefined {
+  return allEligibleMembers(pool, sel)[0];
 }

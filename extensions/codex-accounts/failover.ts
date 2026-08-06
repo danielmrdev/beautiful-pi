@@ -17,14 +17,14 @@ import {
   nextEligibleMember,
   beginOrContinueRequest,
   getSharedRotationState,
+  createSelectionContext,
   type EligibleMember,
-  type RotationContext,
-  type RotationState,
+  type SelectionContext,
 } from "./rotation.ts";
 import { nextChainMember, chainContainingCredential, chainPoolForCredential } from "./chain.ts";
 import { rotationContextFrom } from "./context.ts";
 import { loadGlobalAccountConfig, loadProjectAccountConfig, resolveEffectiveConfig, saveGlobalAccountConfig, poolPointerPersists, chainProgressPersists } from "./store.ts";
-import type { AccountConfig, ChainTarget, CodexChain, CodexPool } from "./types.ts";
+import type { ChainTarget, CodexChain, CodexPool } from "./types.ts";
 
 /** Structural slice of the extension context the failover needs. */
 export interface FailoverContext {
@@ -152,29 +152,26 @@ function retryDecision(
  */
 export async function decideFailover(
   run: FailoverRunInfo,
-  cfg: AccountConfig,
-  ctx: RotationContext,
-  state: RotationState,
-  now: number = Date.now(),
+  sel: SelectionContext,
 ): Promise<FailoverDecision> {
   if (!run.lastError || !isCodexRateLimitError(run.lastError)) return { kind: "none" };
   if (!run.lastProvider) return { kind: "none" };
-  beginOrContinueRequest(state, run.lastUserText);
-  state.attempted.add(run.lastProvider);
-  const chain = chainContainingCredential(cfg, run.lastProvider);
+  beginOrContinueRequest(sel.state, run.lastUserText);
+  sel.state.attempted.add(run.lastProvider);
+  const chain = chainContainingCredential(sel.cfg, run.lastProvider);
   if (!chain) {
-    const pool = (cfg.pools ?? []).find(
+    const pool = (sel.cfg.pools ?? []).find(
       (p) => p.enabled && p.credentialIds.includes(run.lastProvider!),
     );
     if (!pool) return { kind: "none" };
-    markCooldown(state, run.lastProvider, pool.cooldownSeconds, now);
-    const member = nextEligibleMember(pool, cfg, ctx, state, now);
+    markCooldown(sel.state, run.lastProvider, pool.cooldownSeconds, sel.now);
+    const member = nextEligibleMember(pool, sel);
     if (!member) return { kind: "none" };
     return retryDecision(run.lastProvider, member, pool.name, pool, undefined, undefined, run.lastUserText);
   }
-  const owningPool = chainPoolForCredential(cfg, chain, run.lastProvider);
-  markCooldown(state, run.lastProvider, owningPool?.cooldownSeconds ?? 60, now);
-  const walk = await nextChainMember(chain, cfg, ctx, state, now);
+  const owningPool = chainPoolForCredential(sel.cfg, chain, run.lastProvider);
+  markCooldown(sel.state, run.lastProvider, owningPool?.cooldownSeconds ?? 60, sel.now);
+  const walk = await nextChainMember(chain, sel);
   if (!walk) return { kind: "none" };
   return retryDecision(run.lastProvider, walk.member, walk.pool?.name ?? chain.name, walk.pool, chain, walk.targetIndex, run.lastUserText);
 }
@@ -272,7 +269,10 @@ export function wireFailover(pi: ExtensionAPI): void {
     const global = loadGlobalAccountConfig();
     const project = ctx.isProjectTrusted?.() ? loadProjectAccountConfig(ctx.cwd) : null;
     const cfg = project ? resolveEffectiveConfig(global, project) : global;
-    const decision = await decideFailover(run, cfg, rotationContextFrom(ctx), getSharedRotationState());
+    const decision = await decideFailover(
+      run,
+      createSelectionContext(cfg, rotationContextFrom(ctx), getSharedRotationState()),
+    );
     if (decision.kind === "retry") {
       actedOn = runKey(run);
       return actOnFailover(pi, ctx, decision);

@@ -10,6 +10,7 @@ import {
   isCooldownActive,
   nextEligibleMember,
 } from "./rotation.ts";
+import { sel } from "../test-helpers.ts";
 import type { AccountConfig, CodexAccount, CodexPool } from "./types.ts";
 
 const NOW = 1_000_000;
@@ -54,14 +55,14 @@ describe("eligibility", () => {
   test("an account already attempted for this request is not eligible", () => {
     const state = createRotationState();
     state.attempted.add("openai-codex");
-    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2"]), cfgWith(["openai-codex", "openai-codex-2"]), ctx(), state, NOW);
+    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2"]), sel(cfgWith(["openai-codex", "openai-codex-2"]), ctx(), state, NOW));
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
 
   test("an account in cooldown is not eligible", () => {
     const state = createRotationState();
     markCooldown(state, "openai-codex-2", 60, NOW);
-    const pick = nextEligibleMember(pool(["openai-codex-2", "openai-codex"]), cfgWith(["openai-codex-2", "openai-codex"]), ctx(), state, NOW);
+    const pick = nextEligibleMember(pool(["openai-codex-2", "openai-codex"]), sel(cfgWith(["openai-codex-2", "openai-codex"]), ctx(), state, NOW));
     assert.equal(pick?.credentialId, "openai-codex");
   });
 
@@ -70,17 +71,19 @@ describe("eligibility", () => {
     markCooldown(state, "openai-codex", 60, NOW);
     assert.equal(isCooldownActive(state, "openai-codex", NOW + 30_000), true);
     assert.equal(isCooldownActive(state, "openai-codex", NOW + 60_000), false);
-    const pick = nextEligibleMember(pool(["openai-codex"]), cfgWith(["openai-codex"]), ctx(), state, NOW + 61_000);
+    const pick = nextEligibleMember(pool(["openai-codex"]), sel(cfgWith(["openai-codex"]), ctx(), state, NOW + 61_000));
     assert.equal(pick?.credentialId, "openai-codex");
   });
 
   test("unauthenticated members are skipped", () => {
     const pick = nextEligibleMember(
       pool(["openai-codex", "openai-codex-2"]),
-      cfgWith(["openai-codex", "openai-codex-2"]),
-      ctx({ auth: new Set(["openai-codex"]) }),
-      createRotationState(),
-      NOW,
+      sel(
+        cfgWith(["openai-codex", "openai-codex-2"]),
+        ctx({ auth: new Set(["openai-codex"]) }),
+        createRotationState(),
+        NOW,
+      ),
     );
     assert.equal(pick?.credentialId, "openai-codex");
   });
@@ -88,10 +91,12 @@ describe("eligibility", () => {
   test("project-restricted members are skipped", () => {
     const pick = nextEligibleMember(
       pool(["openai-codex", "openai-codex-2"]),
-      cfgWith(["openai-codex", "openai-codex-2"]),
-      ctx({ allowed: (id) => id !== "openai-codex" }),
-      createRotationState(),
-      NOW,
+      sel(
+        cfgWith(["openai-codex", "openai-codex-2"]),
+        ctx({ allowed: (id) => id !== "openai-codex" }),
+        createRotationState(),
+        NOW,
+      ),
     );
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
@@ -99,10 +104,7 @@ describe("eligibility", () => {
   test("members without an account entry are skipped", () => {
     const pick = nextEligibleMember(
       pool(["openai-codex", "ghost"]),
-      cfgWith(["openai-codex"]),
-      ctx(),
-      createRotationState(),
-      NOW,
+      sel(cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW),
     );
     assert.equal(pick?.credentialId, "openai-codex");
   });
@@ -114,18 +116,18 @@ describe("round-robin", () => {
     const ids = cfg.accounts.map((a) => a.credentialId);
     const state = createRotationState();
 
-    const first = nextEligibleMember(pool(ids, { lastUsedIndex: 0 }), cfg, ctx(), state, NOW);
+    const first = nextEligibleMember(pool(ids, { lastUsedIndex: 0 }), sel(cfg, ctx(), state, NOW));
     assert.equal(first?.credentialId, ids[1], "starts after lastUsedIndex");
-    const second = nextEligibleMember(pool(ids, { lastUsedIndex: first!.index }), cfg, ctx(), state, NOW);
+    const second = nextEligibleMember(pool(ids, { lastUsedIndex: first!.index }), sel(cfg, ctx(), state, NOW));
     assert.equal(second?.credentialId, ids[2]);
-    const third = nextEligibleMember(pool(ids, { lastUsedIndex: second!.index }), cfg, ctx(), state, NOW);
+    const third = nextEligibleMember(pool(ids, { lastUsedIndex: second!.index }), sel(cfg, ctx(), state, NOW));
     assert.equal(third?.credentialId, ids[0], "wraps to the start");
   });
 
   test("a fresh pool (no last used) starts with the first member", () => {
     const cfg = cfgWith(["a", "b"].map((x) => `openai-codex-${x}`));
     const ids = cfg.accounts.map((a) => a.credentialId);
-    const pick = nextEligibleMember(pool(ids, { lastUsedIndex: -1 }), cfg, ctx(), createRotationState(), NOW);
+    const pick = nextEligibleMember(pool(ids, { lastUsedIndex: -1 }), sel(cfg, ctx(), createRotationState(), NOW));
     assert.equal(pick?.credentialId, ids[0]);
     assert.equal(pick?.index, 0);
   });
@@ -134,7 +136,7 @@ describe("round-robin", () => {
     const cfg = cfgWith(["openai-codex", "openai-codex-2", "openai-codex-3"]);
     const state = createRotationState();
     markCooldown(state, "openai-codex-2", 60, NOW);
-    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2", "openai-codex-3"]), cfg, ctx(), state, NOW);
+    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2", "openai-codex-3"]), sel(cfg, ctx(), state, NOW));
     assert.equal(pick?.credentialId, "openai-codex-3", "skips the cooled-down member");
   });
 
@@ -142,28 +144,25 @@ describe("round-robin", () => {
     const state = createRotationState();
     state.attempted.add("openai-codex");
     state.attempted.add("openai-codex-2");
-    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2"]), cfgWith(["openai-codex", "openai-codex-2"]), ctx(), state, NOW);
+    const pick = nextEligibleMember(pool(["openai-codex", "openai-codex-2"]), sel(cfgWith(["openai-codex", "openai-codex-2"]), ctx(), state, NOW));
     assert.equal(pick, undefined);
   });
 
   test("disabled pools yield nothing", () => {
     const pick = nextEligibleMember(
       pool(["openai-codex"], { enabled: false }),
-      cfgWith(["openai-codex"]),
-      ctx(),
-      createRotationState(),
-      NOW,
+      sel(cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW),
     );
     assert.equal(pick, undefined);
   });
 
   test("empty pools yield nothing", () => {
-    const pick = nextEligibleMember(pool([]), cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW);
+    const pick = nextEligibleMember(pool([]), sel(cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW));
     assert.equal(pick, undefined);
   });
 
   test("single-member pool picks the member when eligible", () => {
-    const pick = nextEligibleMember(pool(["openai-codex"]), cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW);
+    const pick = nextEligibleMember(pool(["openai-codex"]), sel(cfgWith(["openai-codex"]), ctx(), createRotationState(), NOW));
     assert.equal(pick?.credentialId, "openai-codex");
   });
 });

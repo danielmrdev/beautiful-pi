@@ -15,7 +15,12 @@ import {
   WEEKDAYS,
   WEEKEND,
 } from "./strategies.ts";
-import { createRotationState, markCooldown, nextEligibleMember } from "./rotation.ts";
+import {
+  createRotationState,
+  markCooldown,
+  nextEligibleMember,
+} from "./rotation.ts";
+import { sel } from "../test-helpers.ts";
 import type { AccountQuota } from "./quota.ts";
 import type { AccountConfig, CodexAccount, CodexPool, PoolSchedule } from "./types.ts";
 
@@ -68,13 +73,13 @@ const ids = ["openai-codex", "openai-codex-2", "openai-codex-3"];
 
 describe("eligibleMembers", () => {
   test("returns all eligible members in rotation order after lastUsedIndex", () => {
-    const members = eligibleMembers(pool(ids), cfgWith(ids), ctx(), createRotationState(), NOW);
+    const members = eligibleMembers(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), NOW));
     assert.deepEqual(members.map((m) => m.credentialId), ["openai-codex-2", "openai-codex-3", "openai-codex"]);
     assert.deepEqual(members.map((m) => m.index), [1, 2, 0]);
   });
 
   test("a fresh pool scans from the first member", () => {
-    const members = eligibleMembers(pool(ids, { lastUsedIndex: -1 }), cfgWith(ids), ctx(), createRotationState(), NOW);
+    const members = eligibleMembers(pool(ids, { lastUsedIndex: -1 }), sel(cfgWith(ids), ctx(), createRotationState(), NOW));
     assert.deepEqual(members.map((m) => m.credentialId), ids);
   });
 
@@ -85,18 +90,20 @@ describe("eligibleMembers", () => {
     markCooldown(state, "openai-codex-3", 60, NOW);
     const members = eligibleMembers(
       pool([...five, "ghost"]),
-      cfgWith(five),
-      // authenticated set excludes -4; project restriction blocks -5
-      ctx({ auth: new Set(five.filter((id) => id !== "openai-codex-4")), allowed: (id) => id !== "openai-codex-5" }),
-      state,
-      NOW,
+      sel(
+        cfgWith(five),
+        // authenticated set excludes -4; project restriction blocks -5
+        ctx({ auth: new Set(five.filter((id) => id !== "openai-codex-4")), allowed: (id) => id !== "openai-codex-5" }),
+        state,
+        NOW,
+      ),
     );
     assert.deepEqual(members.map((m) => m.credentialId), ["openai-codex"], "only the one eligible member remains");
   });
 
   test("disabled or empty pools yield nothing", () => {
-    assert.deepEqual(eligibleMembers(pool(ids, { enabled: false }), cfgWith(ids), ctx(), createRotationState(), NOW), []);
-    assert.deepEqual(eligibleMembers(pool([]), cfgWith(ids), ctx(), createRotationState(), NOW), []);
+    assert.deepEqual(eligibleMembers(pool(ids, { enabled: false }), sel(cfgWith(ids), ctx(), createRotationState(), NOW)), []);
+    assert.deepEqual(eligibleMembers(pool([]), sel(cfgWith(ids), ctx(), createRotationState(), NOW)), []);
   });
 });
 
@@ -104,11 +111,8 @@ describe("selectQuotaFirst", () => {
   test("picks the healthiest eligible account", () => {
     const pick = selectQuotaFirst(
       pool(ids),
-      cfgWith(ids),
-      ctx(),
-      createRotationState(),
+      sel(cfgWith(ids), ctx(), createRotationState(), NOW),
       quotaMap([["openai-codex", quota(20)], ["openai-codex-2", quota(80)], ["openai-codex-3", quota(50)]]),
-      NOW,
     );
     assert.equal(pick?.credentialId, "openai-codex-2", "most headroom wins");
   });
@@ -116,11 +120,8 @@ describe("selectQuotaFirst", () => {
   test("tie-breaks by rotation order", () => {
     const pick = selectQuotaFirst(
       pool(ids),
-      cfgWith(ids),
-      ctx(),
-      createRotationState(),
+      sel(cfgWith(ids), ctx(), createRotationState(), NOW),
       quotaMap([["openai-codex", quota(50)], ["openai-codex-2", quota(50)], ["openai-codex-3", quota(50)]]),
-      NOW,
     );
     assert.equal(pick?.credentialId, "openai-codex-2", "first in rotation order among equals");
   });
@@ -128,19 +129,16 @@ describe("selectQuotaFirst", () => {
   test("skips exhausted members while any data-bearing member exists", () => {
     const pick = selectQuotaFirst(
       pool(ids),
-      cfgWith(ids),
-      ctx(),
-      createRotationState(),
+      sel(cfgWith(ids), ctx(), createRotationState(), NOW),
       quotaMap([["openai-codex", quota(0, "exhausted")], ["openai-codex-2", quota(10)], ["openai-codex-3", undefined]]),
-      NOW,
     );
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
 
   test("falls back to round-robin when no member has quota data", () => {
     const state = createRotationState();
-    const pick = selectQuotaFirst(pool(ids), cfgWith(ids), ctx(), state, () => undefined, NOW);
-    const rr = nextEligibleMember(pool(ids), cfgWith(ids), ctx(), state, NOW);
+    const pick = selectQuotaFirst(pool(ids), sel(cfgWith(ids), ctx(), state, NOW), () => undefined);
+    const rr = nextEligibleMember(pool(ids), sel(cfgWith(ids), ctx(), state, NOW));
     assert.deepEqual(pick, rr, "identical to the deterministic round-robin pick");
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
@@ -148,11 +146,8 @@ describe("selectQuotaFirst", () => {
   test("all-exhausted members fall back to round-robin", () => {
     const pick = selectQuotaFirst(
       pool(ids),
-      cfgWith(ids),
-      ctx(),
-      createRotationState(),
+      sel(cfgWith(ids), ctx(), createRotationState(), NOW),
       quotaMap(ids.map((id) => [id, quota(0, "exhausted")])),
-      NOW,
     );
     assert.equal(pick?.credentialId, "openai-codex-2", "round-robin fallback still routes");
   });
@@ -160,11 +155,8 @@ describe("selectQuotaFirst", () => {
   test("fallback prefers unknown-headroom members over known-exhausted ones", () => {
     const pick = selectQuotaFirst(
       pool(ids, { lastUsedIndex: -1 }),
-      cfgWith(ids),
-      ctx(),
-      createRotationState(),
+      sel(cfgWith(ids), ctx(), createRotationState(), NOW),
       quotaMap([["openai-codex", quota(0, "exhausted")], ["openai-codex-2", undefined], ["openai-codex-3", quota(0, "exhausted")]]),
-      NOW,
     );
     assert.equal(
       pick?.credentialId,
@@ -176,11 +168,8 @@ describe("selectQuotaFirst", () => {
   test("respects project restrictions via the eligible set", () => {
     const pick = selectQuotaFirst(
       pool(ids),
-      cfgWith(ids),
-      ctx({ allowed: (id) => id !== "openai-codex-2" }),
-      createRotationState(),
+      sel(cfgWith(ids), ctx({ allowed: (id) => id !== "openai-codex-2" }), createRotationState(), NOW),
       quotaMap([["openai-codex", quota(90)], ["openai-codex-2", quota(10)], ["openai-codex-3", quota(50)]]),
-      NOW,
     );
     assert.equal(pick?.credentialId, "openai-codex", "restricted healthiest member is never selected");
   });
@@ -188,7 +177,7 @@ describe("selectQuotaFirst", () => {
   test("returns undefined when nothing is eligible", () => {
     const state = createRotationState();
     ids.forEach((id) => state.attempted.add(id));
-    const pick = selectQuotaFirst(pool(ids), cfgWith(ids), ctx(), state, () => undefined, NOW);
+    const pick = selectQuotaFirst(pool(ids), sel(cfgWith(ids), ctx(), state, NOW), () => undefined);
     assert.equal(pick, undefined);
   });
 });
@@ -256,13 +245,13 @@ describe("selectScheduled", () => {
       ...activeSchedule,
       memberRoles: { "openai-codex": "backup", "openai-codex-2": "backup", "openai-codex-3": "primary" },
     };
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), createRotationState(), schedule, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), activeThu.getTime()), schedule);
     assert.equal(pick?.credentialId, "openai-codex-3", "backups first in rotation are skipped for the primary");
   });
 
   test("picks the first eligible primary in rotation order", () => {
     const schedule: PoolSchedule = { ...activeSchedule, memberRoles: { "openai-codex-3": "backup" } };
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), createRotationState(), schedule, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), activeThu.getTime()), schedule);
     assert.equal(pick?.credentialId, "openai-codex-2", "first primary after lastUsedIndex");
   });
 
@@ -273,32 +262,32 @@ describe("selectScheduled", () => {
     };
     const state = createRotationState();
     state.attempted.add("openai-codex");
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), state, schedule, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), state, activeThu.getTime()), schedule);
     assert.equal(pick?.credentialId, "openai-codex-2", "first eligible backup");
   });
 
   test("inactive schedule degrades to round-robin", () => {
     const saturday = new Date(2026, 7, 15, 10, 0); // Saturday, outside WEEKDAYS
     const state = createRotationState();
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), state, activeSchedule, saturday);
-    const rr = nextEligibleMember(pool(ids), cfgWith(ids), ctx(), state, saturday.getTime());
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), state, saturday.getTime()), activeSchedule);
+    const rr = nextEligibleMember(pool(ids), sel(cfgWith(ids), ctx(), state, saturday.getTime()));
     assert.deepEqual(pick, rr);
   });
 
   test("no roles configured degrades to round-robin order", () => {
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), createRotationState(), activeSchedule, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), activeThu.getTime()), activeSchedule);
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
 
   test("no schedule means round-robin", () => {
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), createRotationState(), undefined, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), activeThu.getTime()), undefined);
     assert.equal(pick?.credentialId, "openai-codex-2");
   });
 
   test("returns undefined when nothing is eligible", () => {
     const state = createRotationState();
     ids.forEach((id) => state.attempted.add(id));
-    const pick = selectScheduled(pool(ids), cfgWith(ids), ctx(), state, activeSchedule, activeThu);
+    const pick = selectScheduled(pool(ids), sel(cfgWith(ids), ctx(), state, activeThu.getTime()), activeSchedule);
     assert.equal(pick, undefined);
   });
 });
@@ -315,28 +304,28 @@ describe("memberRoleOf", () => {
 
 describe("resolveCustomSelection", () => {
   test("resolves an account ref to its eligible member", () => {
-    const pick = resolveCustomSelection(pool(ids), cfgWith(ids), ctx(), createRotationState(), "openai-codex-2", NOW);
+    const pick = resolveCustomSelection(pool(ids), sel(cfgWith(ids), ctx(), createRotationState(), NOW), "openai-codex-2");
     assert.deepEqual(pick, { credentialId: "openai-codex-2", index: 1 });
   });
 
   test("accepts labels and ids as refs", () => {
     const cfg = cfgWith(ids);
-    const byLabel = resolveCustomSelection(pool(ids), cfg, ctx(), createRotationState(), "openai-codex-3", NOW);
-    const byId = resolveCustomSelection(pool(ids), cfg, ctx(), createRotationState(), "id-openai-codex-3", NOW);
+    const byLabel = resolveCustomSelection(pool(ids), sel(cfg, ctx(), createRotationState(), NOW), "openai-codex-3");
+    const byId = resolveCustomSelection(pool(ids), sel(cfg, ctx(), createRotationState(), NOW), "id-openai-codex-3");
     assert.equal(byLabel?.credentialId, "openai-codex-3");
     assert.equal(byId?.credentialId, "openai-codex-3");
   });
 
   test("empty or unknown refs yield undefined", () => {
     const cfg = cfgWith(ids);
-    assert.equal(resolveCustomSelection(pool(ids), cfg, ctx(), createRotationState(), "", NOW), undefined);
-    assert.equal(resolveCustomSelection(pool(ids), cfg, ctx(), createRotationState(), "nope", NOW), undefined);
-    assert.equal(resolveCustomSelection(pool(ids), cfg, ctx(), createRotationState(), undefined, NOW), undefined);
+    assert.equal(resolveCustomSelection(pool(ids), sel(cfg, ctx(), createRotationState(), NOW), ""), undefined);
+    assert.equal(resolveCustomSelection(pool(ids), sel(cfg, ctx(), createRotationState(), NOW), "nope"), undefined);
+    assert.equal(resolveCustomSelection(pool(ids), sel(cfg, ctx(), createRotationState(), NOW), undefined), undefined);
   });
 
   test("a ref outside the pool yields undefined", () => {
     const cfg = cfgWith(ids);
-    const pick = resolveCustomSelection(pool(["openai-codex"]), cfg, ctx(), createRotationState(), "openai-codex-2", NOW);
+    const pick = resolveCustomSelection(pool(["openai-codex"]), sel(cfg, ctx(), createRotationState(), NOW), "openai-codex-2");
     assert.equal(pick, undefined);
   });
 
@@ -344,12 +333,12 @@ describe("resolveCustomSelection", () => {
     const cfg = cfgWith(ids);
     const state = createRotationState();
     state.attempted.add("openai-codex-2");
-    assert.equal(resolveCustomSelection(pool(ids), cfg, ctx(), state, "openai-codex-2", NOW), undefined, "attempted");
-    const restricted = resolveCustomSelection(pool(ids), cfg, ctx({ allowed: () => false }), createRotationState(), "openai-codex-2", NOW);
+    assert.equal(resolveCustomSelection(pool(ids), sel(cfg, ctx(), state, NOW), "openai-codex-2"), undefined, "attempted");
+    const restricted = resolveCustomSelection(pool(ids), sel(cfg, ctx({ allowed: () => false }), createRotationState(), NOW), "openai-codex-2");
     assert.equal(restricted, undefined, "project-restricted");
-    const unauth = resolveCustomSelection(pool(ids), cfg, ctx({ auth: new Set(["openai-codex"]) }), createRotationState(), "openai-codex-2", NOW);
+    const unauth = resolveCustomSelection(pool(ids), sel(cfg, ctx({ auth: new Set(["openai-codex"]) }), createRotationState(), NOW), "openai-codex-2");
     assert.equal(unauth, undefined, "not authenticated");
-    const cooling = resolveCustomSelection(pool(ids), cfg, ctx(), (() => { const s = createRotationState(); markCooldown(s, "openai-codex-2", 60, NOW); return s; })(), "openai-codex-2", NOW);
+    const cooling = resolveCustomSelection(pool(ids), sel(cfg, ctx(), (() => { const s = createRotationState(); markCooldown(s, "openai-codex-2", 60, NOW); return s; })(), NOW), "openai-codex-2");
     assert.equal(cooling, undefined, "cooling down");
   });
 });
