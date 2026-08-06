@@ -47,7 +47,7 @@ import {
 import { nextCodexCredentialId, registerAccountProvider, isSuffixedCodexId, activateAccountModel, findAccountModel } from "./provider.ts";
 import { getProviderAdapter } from "./registry.ts";
 import { runMigration } from "./migration.ts";
-import { nextEligibleMember, getSharedRotationState, beginNewRequest, isCooldownActive, createSelectionContext, type EligibleMember, type SelectionContext } from "./rotation.ts";
+import { getSharedRotationState, beginNewRequest, isCooldownActive, createSelectionContext, type EligibleMember, type SelectionContext } from "./rotation.ts";
 import { rotationContextFrom } from "./context.ts";
 import {
   WEEKDAYS,
@@ -60,7 +60,7 @@ import {
 } from "./strategies.ts";
 import { fetchAccountQuotaReport, formatAccountQuota, formatUnavailableReason } from "./quota.ts";
 import { DATE_RE, TIME_RE, WINDOW_RE } from "./schedule.ts";
-import { chainTargetStatus, memberUnavailableReason, walkChain, type ChainWalkResult } from "./chain.ts";
+import { chainTargetStatus, walkChain, type ChainWalkResult } from "./chain.ts";
 import {
   createChain,
   deleteChain,
@@ -80,7 +80,7 @@ import {
   poolPointerPersists,
   chainProgressPersists,
 } from "./store.ts";
-import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, CodexPreset, PoolSchedule } from "./types.ts";
+import type { AccountAuthStatus, AccountConfig, ChainTarget, CodexAccount, CodexChain, CodexPool, PoolSchedule } from "./types.ts";
 
 const USAGE = [
   "/codex account <subcommand>",
