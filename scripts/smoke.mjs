@@ -13,9 +13,12 @@
  *   1. `pnpm pack` → tarball of the current tree.
  *   2. npm-install the tarball into a fresh temp agent npm dir with pi's
  *      exact command (npm install, no --legacy-peer-deps) → resolves ALL
- *      dependencies strictly, including the pi-blackhole fork pin. The
- *      pi-rtk-optimizer peer-range gap for pi 0.83 is closed by the npm
- *      `overrides` field in package.json, so this must succeed without flags.
+ *      dependencies strictly, including the pi-blackhole fork pin.
+ *   2b. Replicate pi's git-based update (`pi update --extensions`): npm
+ *      installs the repo tree as the ROOT project with `npm install
+ *      --omit=dev`. There pi-rtk-optimizer is a DIRECT dependency, where npm
+ *      ignores the overrides field — the shipped `.npmrc`
+ *      (legacy-peer-deps=true) is what makes it resolve (issue #18).
  *   3. Assert every package.json "pi" manifest path (extensions, prompts,
  *      themes) resolves relative to the installed package, every direct
  *      dependency is present, and the installed pi-blackhole fork carries the
@@ -40,7 +43,7 @@
  * of the offline unit suite.
  */
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -160,6 +163,35 @@ try {
     fail(`dependency install failed: ${(install.stderr || "").slice(0, 500)}`);
   } else {
     ok("dependencies resolved");
+  }
+
+  // 2b. Replicate pi's git-based update (the path that failed in the field):
+  // pi clones the repo and runs `npm install --omit=dev` with beautiful-pi's
+  // package.json as the ROOT project. pi-rtk-optimizer is then a direct
+  // dependency, where npm ignores the overrides field entirely — the shipped
+  // .npmrc (legacy-peer-deps=true) is the fix. A regression here breaks
+  // `pi update --extensions`.
+  const gitDir = join(tmp, "git-update");
+  mkdirSync(gitDir, { recursive: true });
+  cpSync(ROOT, gitDir, {
+    recursive: true,
+    filter: (src) => {
+      const base = src.split("/").pop();
+      return base !== "node_modules" && base !== ".git" && base !== "beautiful-pi-0.1.0.tgz";
+    },
+  });
+  ok("installing via pi's git-update command (npm install --omit=dev, root project)");
+  const gitInstall = run(
+    "npm",
+    ["install", "--omit=dev", "--no-audit", "--no-fund"],
+    { cwd: gitDir, timeout: 300_000 },
+  );
+  if (gitInstall.timedOut) {
+    fail("git-update install timed out");
+  } else if (gitInstall.status !== 0) {
+    fail(`git-update install failed: ${(gitInstall.stderr || "").slice(0, 500)}`);
+  } else {
+    ok("git-update install resolved (legacy-peer-deps via shipped .npmrc)");
   }
 
   // Point this process at the temp agent so the installed coordinator's
