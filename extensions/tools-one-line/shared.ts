@@ -29,7 +29,7 @@ export const intentProperty = {
 // ── Spinner ───────────────────────────────────────────────────────────────────
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const FRAME_MS = 80;
+const FRAME_MS = 300;
 
 export const currentFrame = () =>
   FRAMES[Math.floor(Date.now() / FRAME_MS) % FRAMES.length] ?? "⠋";

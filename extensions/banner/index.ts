@@ -94,22 +94,27 @@ function getPiVersion(): string {
 		if (path && !candidates.includes(path)) candidates.push(path);
 	};
 
-	// Best case: pi is the process that loaded this extension, so Node can resolve its package.
-	for (const pkgName of PI_PACKAGE_NAMES) {
-		try {
-			add(require.resolve(`${pkgName}/package.json`));
-		} catch {
-			/* try next */
-		}
-	}
-
-	// If the CLI entrypoint lives inside the package (npx/global install), walk up to package.json.
-	for (const runtimePath of [process.argv?.[1], require.main?.filename]) {
+	// Resolve the package that launched Pi first. The extension may have its own
+	// peer dependency copy, which can be older than the running Pi version.
+	for (const runtimePath of [
+		process.execPath,
+		process.argv?.[1],
+		require.main?.filename,
+	]) {
 		if (!runtimePath) continue;
 		try {
 			add(nearestPiPackageJson(realpathSync(runtimePath)));
 		} catch {
 			add(nearestPiPackageJson(runtimePath));
+		}
+	}
+
+	// Fallback: resolve Pi from the extension's module graph.
+	for (const pkgName of PI_PACKAGE_NAMES) {
+		try {
+			add(require.resolve(`${pkgName}/package.json`));
+		} catch {
+			/* try next */
 		}
 	}
 

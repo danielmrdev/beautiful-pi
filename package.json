@@ -48,9 +48,9 @@
     "pi-blackhole": "github:danielmrdev/pi-blackhole#4700d7b09c6e672d6c0c62301ae446cfa80ff0d0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.83.0",
-    "@earendil-works/pi-coding-agent": "^0.83.0",
-    "@earendil-works/pi-tui": "^0.83.0"
+    "@earendil-works/pi-ai": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@earendil-works/pi-tui": "^0.84.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -445,7 +445,16 @@ export default function (pi: ExtensionAPI) {
 				try {
 					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 					const next = auth.ok && auth.apiKey
-						? await fetchOpenAIUsage(auth.apiKey, auth.headers)
+						? await fetchOpenAIUsage(
+								auth.apiKey,
+								auth.headers
+									? Object.fromEntries(
+											Object.entries(auth.headers).filter(
+												(e): e is [string, string] => e[1] !== null
+											)
+										)
+									: undefined
+							)
 						: null;
 					if (generation === usageGeneration) {
 						openAIUsage = next;
