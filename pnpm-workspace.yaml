@@ -6,7 +6,7 @@ allowBuilds:
   '@hypabolic/pi-hypa@0.1.12': true
   'node-pty@1.1.0': true
   'pi-rtk-optimizer@0.9.0': true
-  'pi-blackhole@https://codeload.github.com/danielmrdev/pi-blackhole/tar.gz/4700d7b09c6e672d6c0c62301ae446cfa80ff0d0': true
+  'pi-blackhole@https://codeload.github.com/k0valik/pi-blackhole/tar.gz/de71d87d64a82bd399d61c7f7f071afae2b56474': true
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-agent-core@0.80.10'
   - '@earendil-works/pi-ai@0.80.10'

@@ -12,7 +12,7 @@
  *   - Codex native failure → compaction cancelled, blackhole does not take over
  *   - coordinator degrades loudly (warning) when the one-engine guarantee
  *     cannot hold (config write failure, env override shadowing, missing
- *     fork capability) and never touches the separate Codex config
+ *     provider-aware capability) and never touches the separate Codex config
  * No live provider calls: the Codex remote endpoint is stubbed per test and
  * the stub is restored afterwards.
  */
@@ -88,15 +88,15 @@ afterEach(() => {
 });
 
 /** Wire both engines in the given order (no side effects). */
-function wireEngines(order: "codex-first" | "blackhole-first"): FakePi {
+async function wireEngines(order: "codex-first" | "blackhole-first"): Promise<FakePi> {
   const pi = fakePi();
   (pi as any).getAllTools = () => [];
   (pi as any).getActiveTools = () => [];
   if (order === "codex-first") {
     codexCompactionExtension(pi);
-    blackholeExtension(pi);
+    await blackholeExtension(pi);
   } else {
-    blackholeExtension(pi);
+    await blackholeExtension(pi);
     codexCompactionExtension(pi);
   }
   return pi;
@@ -156,7 +156,7 @@ describe("/codex compaction coordination", () => {
   test("Codex model → native Codex compaction; blackhole steps aside", async () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, CODEX_MODEL, branch);
     assert.ok(result?.compaction, "an engine produced a compaction");
@@ -182,7 +182,7 @@ describe("/codex compaction coordination", () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
     for (const order of ["codex-first", "blackhole-first"] as const) {
-      const pi = wireEngines(order);
+      const pi = await wireEngines(order);
       const branch = branchWith(8);
       const result = await compactOnce(pi, CODEX_MODEL, branch);
       assert.equal(
@@ -196,7 +196,7 @@ describe("/codex compaction coordination", () => {
   test("blackhole's cancel path never blocks Codex native compaction", async () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("blackhole-first");
+    const pi = await wireEngines("blackhole-first");
     // Few live messages: without the provider guard, blackhole would return
     // {cancel:true} and short-circuit the runner before codex-compaction.
     const branch = branchWith(2);
@@ -211,7 +211,7 @@ describe("/codex compaction coordination", () => {
 
   test("non-Codex model → blackhole compaction with observational-memory content", async () => {
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, NON_CODEX_MODEL, branch);
     assert.ok(result?.compaction, "blackhole produced a compaction");
@@ -232,7 +232,7 @@ describe("/codex compaction coordination", () => {
   test("Codex native compaction failure → cancelled, blackhole does not take over", async () => {
     stubCodexCompactionFailure();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, CODEX_MODEL, branch);
     assert.equal(result?.cancel, true, "compaction cancelled on native failure");
