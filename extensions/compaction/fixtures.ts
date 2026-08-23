@@ -66,7 +66,10 @@ export function makeEvent(branch: unknown[]): Record<string, unknown> {
       previousSummary: undefined,
       fileOps: { read: [], written: [], edited: [] },
       tokensBefore: 1000,
-      firstKeptEntryId: (branch[0] as { id: string }).id,
+      // Pi normally supplies the safe tail boundary, not the first entry.
+      // Keeping the final message exercises Blackhole's compaction path with
+      // upstream's minimal-tail safety check.
+      firstKeptEntryId: (branch[branch.length - 1] as { id: string }).id,
     },
     reason: "overflow",
     willRetry: false,

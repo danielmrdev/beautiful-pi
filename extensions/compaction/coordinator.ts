@@ -10,12 +10,12 @@
  * extension registration order.
  *
  * This coordinator makes engine selection provider-aware instead of
- * order-dependent: blackhole (provider-aware fork, issue #7) skips the
- * providers pi-codex-compaction owns, so Codex models get native Codex
+ * order-dependent: blackhole (provider-aware since upstream issue #7) skips
+ * the providers pi-codex-compaction owns, so Codex models get native Codex
  * compaction and every other model gets blackhole. The module keeps blackhole's
  * `skipForProviders` config in place and warns loudly when the coordination
  * could silently degrade (config write failure, env override shadowing, or an
- * installed pi-blackhole without the fork capability). The Codex side has its
+ * installed pi-blackhole without the provider-aware capability). The Codex side has its
  * own separate configuration (`~/.pi/agent/pi-codex-compaction.json`,
  * autoCompact + thresholdRatio) — never touched here.
  */
@@ -27,7 +27,7 @@ const { join, dirname } = require("node:path");
 /** Providers owned by pi-codex-compaction; blackhole must never touch them. */
 export const CODEX_COMPACTION_PROVIDERS = ["openai-codex"];
 
-/** Debug-event marker emitted by the provider-aware blackhole fork. */
+/** Debug-event marker emitted by provider-aware pi-blackhole releases. */
 export const PROVIDER_SKIP_MARKER = "before_compact.provider_skipped";
 
 /** blackhole's unified config path (mirrors pi-blackhole's configPath). */
@@ -67,16 +67,21 @@ export function ensureBlackholeSkipConfig(): { changed: boolean; path: string } 
 
 /**
  * True when the installed pi-blackhole carries the provider-aware skip
- * capability (issue #7 fork). Probes the package's built dist for the marker
- * the fork emits in its before-compact guard. `packageDir` is injectable for
- * tests; defaults to the resolved pi-blackhole package.
+ * capability (issue #7). Upstream releases expose either a built dist/index.js
+ * or the source entrypoint; probe both layouts so GitHub and npm installs work.
+ * `packageDir` is injectable for tests; defaults to the resolved package.
  */
 export function blackholeHasProviderSkip(packageDir?: string): boolean {
   try {
     const pkg = packageDir ?? dirname(require.resolve("pi-blackhole/package.json"));
-    const dist = join(pkg, "dist", "index.js");
-    if (!existsSync(dist)) return false;
-    return readFileSync(dist, "utf8").includes(PROVIDER_SKIP_MARKER);
+    const candidates = [
+      join(pkg, "dist", "index.js"),
+      join(pkg, "index.ts"),
+      join(pkg, "src", "hooks", "before-compact.ts"),
+    ];
+    return candidates.some(
+      (file) => existsSync(file) && readFileSync(file, "utf8").includes(PROVIDER_SKIP_MARKER),
+    );
   } catch {
     return false;
   }
@@ -106,7 +111,7 @@ export function coordinationWarnings(
   }
   if (!hasCapability) {
     warnings.push(
-      "Compaction: installed pi-blackhole lacks the provider-aware skipForProviders capability — pin the issue-#7 fork (see README) to avoid double compaction",
+      "Compaction: installed pi-blackhole lacks the provider-aware skipForProviders capability — use a release that supports it (see README) to avoid double compaction",
     );
   }
   return warnings;

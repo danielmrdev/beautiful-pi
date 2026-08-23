@@ -13,7 +13,7 @@ const expectedDependencies = {
   "@juicesharp/rpiv-ask-user-question": "2.4.0",
   "pi-rtk-optimizer": "0.9.0",
   "@juicesharp/rpiv-btw": "2.4.0",
-  "pi-blackhole": "github:danielmrdev/pi-blackhole#4700d7b09c6e672d6c0c62301ae446cfa80ff0d0",
+  "pi-blackhole": "github:k0valik/pi-blackhole#v0.4.8",
 };
 
 const expectedPublishFiles = [
@@ -30,17 +30,17 @@ const expectedPublishFiles = [
 const expectedManifest = {
   extensions: [
     "./extensions/index.ts",
-    "../@ogulcancelik/pi-codex-compaction/index.ts",
-    "../@hypabolic/pi-hypa/extensions/index.ts",
-    "../@plannotator/pi-extension/index.ts",
-    "../@tintinweb/pi-subagents/src/index.ts",
-    "../@juicesharp/rpiv-ask-user-question/index.ts",
-    "../pi-rtk-optimizer/index.ts",
-    "../@juicesharp/rpiv-btw/index.ts",
-    "../pi-blackhole/dist/index.js",
+    "./node_modules/@ogulcancelik/pi-codex-compaction/index.ts",
+    "./node_modules/@hypabolic/pi-hypa/extensions/index.ts",
+    "./node_modules/@plannotator/pi-extension/index.ts",
+    "./node_modules/@tintinweb/pi-subagents/src/index.ts",
+    "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
+    "./node_modules/pi-rtk-optimizer/index.ts",
+    "./node_modules/@juicesharp/rpiv-btw/index.ts",
+    "./node_modules/pi-blackhole/index.ts",
   ],
   skills: [],
-  prompts: ["../@juicesharp/rpiv-btw/prompts/btw-system.txt"],
+  prompts: ["./node_modules/@juicesharp/rpiv-btw/prompts/btw-system.txt"],
   themes: ["./themes/tokyo-night.json", "./themes/tokyo-night-nord.json"],
 };
 
