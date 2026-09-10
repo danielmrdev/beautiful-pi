@@ -10,12 +10,12 @@
  * extension registration order.
  *
  * This coordinator makes engine selection provider-aware instead of
- * order-dependent: blackhole (provider-aware fork, issue #7) skips the
- * providers pi-codex-compaction owns, so Codex models get native Codex
- * compaction and every other model gets blackhole. The module keeps blackhole's
- * `skipForProviders` config in place and warns loudly when the coordination
- * could silently degrade (config write failure, env override shadowing, or an
- * installed pi-blackhole without the fork capability). The Codex side has its
+ * order-dependent: blackhole skips the providers pi-codex-compaction owns, so
+ * Codex models get native Codex compaction and every other model gets
+ * blackhole. The module keeps blackhole's `skipForProviders` config in place
+ * and warns loudly when the coordination could silently degrade (config write
+ * failure, env/project override shadowing, or an installed pi-blackhole
+ * without the capability). The Codex side has its
  * own separate configuration (`~/.pi/agent/pi-codex-compaction.json`,
  * autoCompact + thresholdRatio) — never touched here.
  */
@@ -24,10 +24,27 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs");
 const { join, dirname } = require("node:path");
 
+function normalizeProviders(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0)
+    : [];
+}
+
+function includesCodexSkip(providers: string[]): boolean {
+  return providers.some((entry) => {
+    const [provider, api] = entry.split(":", 2);
+    return provider === "openai-codex" &&
+      (api === undefined || api === "openai-codex-responses");
+  });
+}
+
 /** Providers owned by pi-codex-compaction; blackhole must never touch them. */
 export const CODEX_COMPACTION_PROVIDERS = ["openai-codex"];
 
-/** Debug-event marker emitted by the provider-aware blackhole fork. */
+/** Debug-event marker emitted when Blackhole skips a provider. */
 export const PROVIDER_SKIP_MARKER = "before_compact.provider_skipped";
 
 /** blackhole's unified config path (mirrors pi-blackhole's configPath). */
@@ -49,12 +66,7 @@ export function ensureBlackholeSkipConfig(): { changed: boolean; path: string } 
   } catch {
     // missing or malformed → start from scratch
   }
-  const list = Array.isArray(cfg.skipForProviders)
-    ? (cfg.skipForProviders as unknown[])
-        .filter((v): v is string => typeof v === "string")
-        .map((v) => v.trim())
-        .filter((v) => v.length > 0)
-    : [];
+  const list = normalizeProviders(cfg.skipForProviders);
   const missing = CODEX_COMPACTION_PROVIDERS.filter((p) => !list.includes(p));
   if (missing.length === 0) return { changed: false, path };
   mkdirSync(dirname(path), { recursive: true });
@@ -67,8 +79,8 @@ export function ensureBlackholeSkipConfig(): { changed: boolean; path: string } 
 
 /**
  * True when the installed pi-blackhole carries the provider-aware skip
- * capability (issue #7 fork). Probes the package's built dist for the marker
- * the fork emits in its before-compact guard. `packageDir` is injectable for
+ * capability. Probes the package's built dist for the marker emitted by its
+ * before-compact guard. `packageDir` is injectable for
  * tests; defaults to the resolved pi-blackhole package.
  */
 export function blackholeHasProviderSkip(packageDir?: string): boolean {
@@ -86,27 +98,48 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Return a project-level provider skip list when it overrides the global one. */
+export function projectSkipForProviders(cwd: string | undefined): string[] | undefined {
+  if (!cwd) return undefined;
+  try {
+    const cfg = JSON.parse(
+      readFileSync(join(cwd, ".pi", "pi-blackhole-config.json"), "utf8"),
+    ) as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(cfg, "skipForProviders")) {
+      return undefined;
+    }
+    return normalizeProviders(cfg.skipForProviders);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Warnings when the one-engine-per-turn guarantee could silently degrade.
- * Pure — injectable for tests. Env override wins over the config file inside
- * blackhole's merge; a capability-less pi-blackhole cannot skip providers.
+ * Pure — injectable for tests. Env and project overrides win over the global
+ * config inside blackhole's merge; a capability-less pi-blackhole cannot skip
+ * providers.
  */
 export function coordinationWarnings(
   envSkip: string | undefined,
   hasCapability: boolean,
+  projectSkip?: string[],
 ): string[] {
   const warnings: string[] = [];
-  if (
-    envSkip !== undefined &&
-    !envSkip.split(",").map((s) => s.trim()).includes("openai-codex")
-  ) {
+  const envProviders = envSkip?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  if (envSkip?.trim() && !includesCodexSkip(envProviders)) {
     warnings.push(
-      "Compaction: PI_BLACKHOLE_SKIP_PROVIDERS is set without openai-codex — add it to keep native Codex compaction single-engine",
+      "Compaction: PI_BLACKHOLE_SKIP_PROVIDERS is set without a compatible openai-codex entry — add it to keep native Codex compaction single-engine",
+    );
+  }
+  if (projectSkip && !includesCodexSkip(projectSkip)) {
+    warnings.push(
+      "Compaction: project pi-blackhole config overrides skipForProviders without a compatible openai-codex entry — add it to keep native Codex compaction single-engine",
     );
   }
   if (!hasCapability) {
     warnings.push(
-      "Compaction: installed pi-blackhole lacks the provider-aware skipForProviders capability — pin the issue-#7 fork (see README) to avoid double compaction",
+      "Compaction: installed pi-blackhole lacks the provider-aware skipForProviders capability — use pi-blackhole >=0.4.4 to avoid double compaction",
     );
   }
   return warnings;
@@ -138,6 +171,7 @@ export default function compactionCoordinator(pi: ExtensionAPI): void {
       ...coordinationWarnings(
         process.env.PI_BLACKHOLE_SKIP_PROVIDERS,
         blackholeHasProviderSkip(),
+        projectSkipForProviders(ctx.cwd),
       ),
     );
     if (problems.length > 0 && !coordinationWarned) {

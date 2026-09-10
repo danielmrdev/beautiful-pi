@@ -5,26 +5,22 @@ dependencies. They remain owned and maintained by their upstream authors.
 
 | Package | Version | Maintainer | License | Documentation |
 | --- | ---: | --- | --- | --- |
-| [`@ogulcancelik/pi-codex-compaction`](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | 0.1.3 | Can Celik / ogulcancelik | MIT | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
-| [`@hypabolic/pi-hypa`](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) | 0.1.12 | atomic-mg / Hypabolic | FSL-1.1-ALv2 | [README](https://github.com/Hypabolic/Hypa#readme) |
-| [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator/tree/main/apps/pi-extension) | 0.25.1 | backnotprop | MIT OR Apache-2.0 | [README](https://github.com/backnotprop/plannotator) |
-| [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) | 0.14.3 | tintinweb | MIT | [README](https://github.com/tintinweb/pi-subagents#readme) |
-| [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.4.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
+| [`@ogulcancelik/pi-codex-compaction`](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | 0.1.5 | Can Celik / ogulcancelik | MIT | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
+| [`@hypabolic/pi-hypa`](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) | 0.1.14 | atomic-mg / Hypabolic | FSL-1.1-ALv2 | [README](https://github.com/Hypabolic/Hypa#readme) |
+| [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator/tree/main/apps/pi-extension) | 0.27.13 | backnotprop | MIT OR Apache-2.0 | [README](https://github.com/backnotprop/plannotator) |
+| [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) | 0.19.0 | tintinweb | MIT | [README](https://github.com/tintinweb/pi-subagents#readme) |
+| [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.9.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
 | [`pi-rtk-optimizer`](https://github.com/MasuRii/pi-rtk-optimizer) | 0.9.0 | MasuRii | MIT | [README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
-| [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.4.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
-| [`pi-blackhole`](https://github.com/danielmrdev/pi-blackhole) (fork of [k0valik/pi-blackhole](https://github.com/k0valik/pi-blackhole)) | 0.4.3 (fork `4700d7b`) | k0valik (upstream), danielmrdev (fork) | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
+| [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.9.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
+| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.2 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
 This table covers all eight direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
 
-`pi-blackhole` is pinned to a temporary provider-aware fork
-(`github:danielmrdev/pi-blackhole#4700d7b`, issue #7) while the
-`skipForProviders` capability lands upstream
-([k0valik/pi-blackhole#47](https://github.com/k0valik/pi-blackhole/pull/47));
-switching back to the official release is a one-line dependency bump. The fork
-is a delta over the MIT-licensed upstream — the license text below applies to
-both.
+`pi-blackhole@0.5.2` is the official release and includes the
+`skipForProviders` capability used by beautiful-pi to coordinate it with
+Codex compaction. The MIT notice below applies to the upstream package.
 
 Transitive npm dependencies are not redistributed in the beautiful-pi tarball.
 Pi's npm install keeps each transitive package's own metadata and license file
@@ -79,7 +75,7 @@ SOFTWARE.
 
 ### Functional Source License, Version 1.1, ALv2 Future License
 
-Applies to `@hypabolic/pi-hypa`, version 0.1.12.
+Applies to `@hypabolic/pi-hypa`, version 0.1.14.
 
 ```text
 Functional Source License, Version 1.1, ALv2 Future License
@@ -190,7 +186,7 @@ record its MIT option; its alternative Apache-2.0 terms are reproduced below.
 
 ### Apache License 2.0
 
-Applies to `@plannotator/pi-extension`, version 0.25.1.
+Applies to `@plannotator/pi-extension`, version 0.27.13.
 
 ```text
 Apache License

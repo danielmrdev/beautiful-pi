@@ -2,13 +2,13 @@ allowBuilds:
   '@google/genai': set this to true or false
   esbuild: set this to true or false
   protobufjs: set this to true or false
-  '@hypabolic/hypa-linux-x64@0.1.12': true
-  '@hypabolic/pi-hypa@0.1.12': true
+  '@hypabolic/hypa-linux-x64@0.1.14': true
+  '@hypabolic/pi-hypa@0.1.14': true
   'node-pty@1.1.0': true
   'pi-rtk-optimizer@0.9.0': true
-  'pi-blackhole@https://codeload.github.com/danielmrdev/pi-blackhole/tar.gz/4700d7b09c6e672d6c0c62301ae446cfa80ff0d0': true
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-agent-core@0.80.10'
   - '@earendil-works/pi-ai@0.80.10'
   - '@earendil-works/pi-coding-agent@0.80.10'
   - '@earendil-works/pi-tui@0.80.10'
+  - '@plannotator/pi-extension@0.27.13'

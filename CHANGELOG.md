@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the curated third-party integrations to the latest exact releases:
+  `@ogulcancelik/pi-codex-compaction` 0.1.5, `@hypabolic/pi-hypa` 0.1.14,
+  `@plannotator/pi-extension` 0.27.13, `@tintinweb/pi-subagents` 0.19.0,
+  `@juicesharp/rpiv-ask-user-question` 2.9.0, and
+  `@juicesharp/rpiv-btw` 2.9.0.
+- Replaced the temporary `pi-blackhole` fork with the official 0.5.2 release,
+  which includes the provider-skip capability used by Codex compaction
+  coordination. Blackhole's new context-window-aware default compaction curve
+  now applies to sessions without an explicit threshold.
+- The compaction coordinator now warns when a project-local Blackhole config
+  overrides `skipForProviders` without a compatible `openai-codex` entry.
+
 ### Added
 
 - `/codex` argument autocomplete: typing `/codex ` shows sections, subcommands,

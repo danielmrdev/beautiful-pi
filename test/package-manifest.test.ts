@@ -6,14 +6,14 @@ const { resolve } = require("node:path");
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
 
 const expectedDependencies = {
-  "@ogulcancelik/pi-codex-compaction": "0.1.3",
-  "@hypabolic/pi-hypa": "0.1.12",
-  "@plannotator/pi-extension": "0.25.1",
-  "@tintinweb/pi-subagents": "0.14.3",
-  "@juicesharp/rpiv-ask-user-question": "2.4.0",
+  "@hypabolic/pi-hypa": "0.1.14",
+  "@juicesharp/rpiv-ask-user-question": "2.9.0",
+  "@juicesharp/rpiv-btw": "2.9.0",
+  "@ogulcancelik/pi-codex-compaction": "0.1.5",
+  "@plannotator/pi-extension": "0.27.13",
+  "@tintinweb/pi-subagents": "0.19.0",
+  "pi-blackhole": "0.5.2",
   "pi-rtk-optimizer": "0.9.0",
-  "@juicesharp/rpiv-btw": "2.4.0",
-  "pi-blackhole": "github:danielmrdev/pi-blackhole#4700d7b09c6e672d6c0c62301ae446cfa80ff0d0",
 };
 
 const expectedPublishFiles = [
@@ -39,7 +39,7 @@ const expectedManifest = {
     "../@juicesharp/rpiv-btw/index.ts",
     "../pi-blackhole/dist/index.js",
   ],
-  skills: [],
+  skills: ["../@plannotator/pi-extension/skills/plannotator/SKILL.md"],
   prompts: ["../@juicesharp/rpiv-btw/prompts/btw-system.txt"],
   themes: ["./themes/tokyo-night.json", "./themes/tokyo-night-nord.json"],
 };

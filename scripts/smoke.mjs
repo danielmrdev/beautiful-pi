@@ -13,15 +13,15 @@
  *   1. `pnpm pack` → tarball of the current tree.
  *   2. npm-install the tarball into a fresh temp agent npm dir with pi's
  *      exact command (npm install, no --legacy-peer-deps) → resolves ALL
- *      dependencies strictly, including the pi-blackhole fork pin.
+ *      dependencies strictly, including the official pi-blackhole release.
  *   2b. Replicate pi's git-based update (`pi update --extensions`): npm
  *      installs the repo tree as the ROOT project with `npm install
  *      --omit=dev`. There pi-rtk-optimizer is a DIRECT dependency, where npm
  *      ignores the overrides field — the shipped `.npmrc`
  *      (legacy-peer-deps=true) is what makes it resolve (issue #18).
- *   3. Assert every package.json "pi" manifest path (extensions, prompts,
- *      themes) resolves relative to the installed package, every direct
- *      dependency is present, and the installed pi-blackhole fork carries the
+ *   3. Assert every package.json "pi" manifest path (extensions, skills,
+ *      prompts, themes) resolves relative to the installed package, every direct
+ *      dependency is present, and the installed pi-blackhole carries the
  *      provider-aware capability (via the coordinator's own probe).
  *   4. Boot the pi CLI the tarball resolved (npmDir/.bin/pi) in print mode
  *      against the temp agent (no credentials): the extension-load phase
@@ -33,13 +33,13 @@
  *      compaction coordinator's session_start hook must write
  *      skipForProviders into the clean agent dir at runtime.
  *   6. Exercise the compaction coordination at runtime against the installed
- *      artifacts: drive BOTH engines (pi-codex-compaction + pi-blackhole
- *      fork) through real session_before_compact events and assert
+ *      artifacts: drive BOTH engines (pi-codex-compaction + pi-blackhole)
+ *      through real session_before_compact events and assert
  *      one-engine-per-turn (openai-codex → native compaction, blackhole
  *      steps aside; non-Codex → blackhole compacts).
  *
- * Requires network (npm registry + the pi-blackhole fork on GitHub), a PTY
- * runner (`script` from util-linux), and tsx. Run with `pnpm smoke`. Not part
+ * Requires network (npm registry), a PTY runner (`script` from util-linux),
+ * and tsx. Run with `pnpm smoke`. Not part
  * of the offline unit suite.
  */
 import { spawnSync, spawn } from "node:child_process";
@@ -218,6 +218,7 @@ try {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
   const manifestPaths = [
     ...(pkg.pi?.extensions ?? []),
+    ...(pkg.pi?.skills ?? []),
     ...(pkg.pi?.prompts ?? []),
     ...(pkg.pi?.themes ?? []),
   ];
@@ -230,11 +231,11 @@ try {
     if (existsSync(join(npmDir, "node_modules", dep))) ok(`dependency: ${dep}`);
     else fail(`dependency missing: ${dep}`);
   }
-  // The pinned fork must carry the provider-aware capability (issue #7);
-  // reuse the coordinator's own probe so the check and the runtime guard
-  // cannot drift apart.
+  // The official package must carry the provider-aware capability; reuse the
+  // coordinator's own probe so the check and the runtime guard cannot drift
+  // apart.
   if (coordinator?.blackholeHasProviderSkip() ?? false) {
-    ok("pi-blackhole fork carries the skipForProviders capability");
+    ok("pi-blackhole carries the skipForProviders capability");
   } else {
     fail("pi-blackhole installed without the provider-aware capability");
   }

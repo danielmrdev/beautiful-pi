@@ -14,7 +14,7 @@ import compactionCoordinator from "./compaction/index.ts";
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /bpi (+ /beautiful-pi alias)
   codexAccountsExtension(pi);    // register /codex account + legacy migration
-  compactionCoordinator(pi);     // keep compaction engines provider-aware (#7)
+  compactionCoordinator(pi);     // keep compaction engines provider-aware
   sessionTitleExtension(pi);
   herdrPaneSyncExtension(pi);
   bannerExtension(pi);

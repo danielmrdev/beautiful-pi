@@ -2,7 +2,7 @@
  * Runtime exercise of the provider-aware compaction coordination (issue #13).
  *
  * Drives the REAL compaction engines — pi-codex-compaction and the
- * pi-blackhole fork — plus beautiful-pi's compaction coordinator, all loaded
+ * pi-blackhole — plus beautiful-pi's compaction coordinator, all loaded
  * from the freshly installed package tree, through pi's
  * `session_before_compact` runner semantics (last-writer-wins with a cancel
  * short-circuit) and asserts the observable provider-aware selection:
@@ -136,7 +136,7 @@ async function main(): Promise<number> {
     (pi as { getAllTools?: unknown }).getAllTools = () => [];
     (pi as { getActiveTools?: unknown }).getActiveTools = () => [];
     codexCompactionExtension(pi);
-    blackholeExtension(pi);
+    await blackholeExtension(pi);
 
     // Codex session → native Codex compaction; blackhole's provider-skip
     // guard must fire (otherwise blackhole's own compaction would replace

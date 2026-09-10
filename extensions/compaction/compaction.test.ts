@@ -1,5 +1,5 @@
 /**
- * Compaction engine coordination tests (issue #7).
+ * Compaction engine coordination tests (provider-aware engine selection).
  *
  * Drives the REAL pi-codex-compaction and pi-blackhole extensions through
  * pi's `session_before_compact` runner semantics (last-writer-wins with a
@@ -11,8 +11,8 @@
  *   - blackhole's cancel never blocks Codex native compaction
  *   - Codex native failure → compaction cancelled, blackhole does not take over
  *   - coordinator degrades loudly (warning) when the one-engine guarantee
- *     cannot hold (config write failure, env override shadowing, missing
- *     fork capability) and never touches the separate Codex config
+ *     cannot hold (config write failure, env/project override shadowing, missing
+ *     capability) and never touches the separate Codex config
  * No live provider calls: the Codex remote endpoint is stubbed per test and
  * the stub is restored afterwards.
  */
@@ -21,18 +21,18 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+const { pathToFileURL } = require("node:url");
 import { fakePi, type FakePi } from "../test-helpers.ts";
-import codexCompactionExtension from "@ogulcancelik/pi-codex-compaction/index.ts";
 import {
   NATIVE_COMPACTION_KIND,
   isOpenAICodexModel,
 } from "@ogulcancelik/pi-codex-compaction/native-compaction.ts";
-import blackholeExtension from "pi-blackhole";
 import compactionCoordinator, {
   ensureBlackholeSkipConfig,
   blackholeConfigPath,
   blackholeHasProviderSkip,
   coordinationWarnings,
+  projectSkipForProviders,
   CODEX_COMPACTION_PROVIDERS,
 } from "./coordinator.ts";
 import {
@@ -88,15 +88,27 @@ afterEach(() => {
 });
 
 /** Wire both engines in the given order (no side effects). */
-function wireEngines(order: "codex-first" | "blackhole-first"): FakePi {
+async function wireEngines(order: "codex-first" | "blackhole-first"): Promise<FakePi> {
+  // The Codex package only ships TypeScript source. Load it dynamically so
+  // tsc does not typecheck an upstream 0.1.5 headers mismatch as part of our
+  // project; the real package loader also executes this source at runtime.
+  const { default: codexCompactionExtension } = await import(
+    pathToFileURL(require.resolve("@ogulcancelik/pi-codex-compaction/index.ts")).href,
+  );
+  // Use Blackhole's published bundle here. Its package also ships source
+  // files, but those target a different pi-tui type identity when typechecked
+  // from this project.
+  const { default: blackholeExtension } = await import(
+    pathToFileURL(require.resolve("pi-blackhole/dist/index.js")).href,
+  );
   const pi = fakePi();
   (pi as any).getAllTools = () => [];
   (pi as any).getActiveTools = () => [];
   if (order === "codex-first") {
     codexCompactionExtension(pi);
-    blackholeExtension(pi);
+    await blackholeExtension(pi);
   } else {
-    blackholeExtension(pi);
+    await blackholeExtension(pi);
     codexCompactionExtension(pi);
   }
   return pi;
@@ -156,7 +168,7 @@ describe("/codex compaction coordination", () => {
   test("Codex model → native Codex compaction; blackhole steps aside", async () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, CODEX_MODEL, branch);
     assert.ok(result?.compaction, "an engine produced a compaction");
@@ -182,7 +194,7 @@ describe("/codex compaction coordination", () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
     for (const order of ["codex-first", "blackhole-first"] as const) {
-      const pi = wireEngines(order);
+      const pi = await wireEngines(order);
       const branch = branchWith(8);
       const result = await compactOnce(pi, CODEX_MODEL, branch);
       assert.equal(
@@ -196,7 +208,7 @@ describe("/codex compaction coordination", () => {
   test("blackhole's cancel path never blocks Codex native compaction", async () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("blackhole-first");
+    const pi = await wireEngines("blackhole-first");
     // Few live messages: without the provider guard, blackhole would return
     // {cancel:true} and short-circuit the runner before codex-compaction.
     const branch = branchWith(2);
@@ -211,7 +223,7 @@ describe("/codex compaction coordination", () => {
 
   test("non-Codex model → blackhole compaction with observational-memory content", async () => {
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, NON_CODEX_MODEL, branch);
     assert.ok(result?.compaction, "blackhole produced a compaction");
@@ -232,7 +244,7 @@ describe("/codex compaction coordination", () => {
   test("Codex native compaction failure → cancelled, blackhole does not take over", async () => {
     stubCodexCompactionFailure();
     ensureBlackholeSkipConfig();
-    const pi = wireEngines("codex-first");
+    const pi = await wireEngines("codex-first");
     const branch = branchWith(8);
     const result = await compactOnce(pi, CODEX_MODEL, branch);
     assert.equal(result?.cancel, true, "compaction cancelled on native failure");
@@ -259,15 +271,50 @@ describe("/codex compaction coordination", () => {
     );
   });
 
-  test("coordinationWarnings flags env shadowing and missing capability", () => {
+  test("coordinationWarnings flags env/project shadowing and missing capability", () => {
     const envWarn = coordinationWarnings("anthropic", true);
     assert.ok(envWarn.some((w) => w.includes("PI_BLACKHOLE_SKIP_PROVIDERS")));
+    const projectWarn = coordinationWarnings(undefined, true, ["anthropic"]);
+    assert.ok(projectWarn.some((w) => w.includes("project pi-blackhole config")));
+    assert.equal(coordinationWarnings(undefined, true, []).length, 1);
     const capWarn = coordinationWarnings(undefined, false);
     assert.ok(capWarn.some((w) => w.includes("lacks the provider-aware skipForProviders capability")));
-    // env set with openai-codex + capability present → no warnings
-    assert.equal(coordinationWarnings("anthropic,openai-codex", true).length, 0);
-    // both problems → both warnings
-    assert.equal(coordinationWarnings("anthropic", false).length, 2);
+    // env/project set with a compatible openai-codex entry + capability present → no warnings
+    assert.equal(
+      coordinationWarnings("anthropic,openai-codex:openai-codex-responses", true, [
+        "openai-codex:openai-codex-responses",
+      ]).length,
+      0,
+    );
+    assert.equal(coordinationWarnings(",", true).length, 1);
+    // all three problems → all warnings
+    assert.equal(coordinationWarnings("anthropic", false, ["anthropic"]).length, 3);
+  });
+
+  test("projectSkipForProviders detects an effective project override", () => {
+    const cwd = join(tmpHome, "project");
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".pi", "pi-blackhole-config.json"),
+      JSON.stringify({ skipForProviders: [" anthropic ", 42] }),
+    );
+    assert.deepEqual(projectSkipForProviders(cwd), ["anthropic"]);
+    writeFileSync(
+      join(cwd, ".pi", "pi-blackhole-config.json"),
+      JSON.stringify({ skipForProviders: [] }),
+    );
+    assert.deepEqual(projectSkipForProviders(cwd), []);
+    writeFileSync(
+      join(cwd, ".pi", "pi-blackhole-config.json"),
+      JSON.stringify({ skipForProviders: [42] }),
+    );
+    assert.deepEqual(projectSkipForProviders(cwd), []);
+    writeFileSync(
+      join(cwd, ".pi", "pi-blackhole-config.json"),
+      JSON.stringify({ skipForProviders: ["openai-codex:openai-codex-responses"] }),
+    );
+    assert.deepEqual(projectSkipForProviders(cwd), ["openai-codex:openai-codex-responses"]);
+    assert.equal(projectSkipForProviders(join(tmpHome, "missing")), undefined);
   });
 
   test("coordinator warns when PI_BLACKHOLE_SKIP_PROVIDERS shadows the guarantee", () => {

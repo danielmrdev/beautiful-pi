@@ -97,22 +97,20 @@ dependencies, pinned exactly in `package.json`:
 
 | Category | Bundled package | Version | Repo |
 | --- | --- | ---: | --- |
-| Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.3 | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
-| Compaction | `pi-blackhole` (fork) | 0.4.3+`4700d7b` | [fork](https://github.com/danielmrdev/pi-blackhole) — [upstream](https://github.com/k0valik/pi-blackhole) |
-| Context | `@hypabolic/pi-hypa` | 0.1.12 | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
+| Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.5 | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
+| Compaction | `pi-blackhole` | 0.5.2 | [repo](https://github.com/k0valik/pi-blackhole) |
+| Context | `@hypabolic/pi-hypa` | 0.1.14 | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
 | Context | `pi-rtk-optimizer` | 0.9.0 | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
-| Workflows | `@plannotator/pi-extension` | 0.25.1 | [repo](https://github.com/backnotprop/plannotator) |
-| Workflows | `@tintinweb/pi-subagents` | 0.14.3 | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.4.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.4.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Workflows | `@plannotator/pi-extension` | 0.27.13 | [repo](https://github.com/backnotprop/plannotator) |
+| Workflows | `@tintinweb/pi-subagents` | 0.19.0 | [repo](https://github.com/tintinweb/pi-subagents) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.9.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.9.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
 | Themes | `tokyo-night`, `tokyo-night-nord` (bundled themes) | — | [theme docs](#themes) |
 
-`pi-blackhole` is pinned to a temporary provider-aware fork
-(`github:danielmrdev/pi-blackhole#4700d7b`, issue #7) while the
-`skipForProviders` capability lands upstream
-([k0valik/pi-blackhole#47](https://github.com/k0valik/pi-blackhole/pull/47));
-switching back to the official release is a one-line dependency bump. See
-[`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership and licenses.
+`pi-blackhole@0.5.2` is the official release and includes the
+`skipForProviders` capability used to keep Codex and Blackhole compaction
+engines mutually exclusive. See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)
+for ownership and licenses.
 
 ### Provider and compaction commands
 
@@ -242,21 +240,19 @@ Save this at `~/.pi/agent/pi-codex-compaction.json`; project-local
 Pi's `settings.json` still controls Pi's own threshold. Other providers use
 Pi's normal lifecycle.
 
-`pi-blackhole` is pinned to a provider-aware fork while the capability lands
-upstream (issue #7). Compaction engine selection is coordinated automatically:
+`pi-blackhole@0.5.2` includes the provider-aware skip capability. Compaction
+engine selection is coordinated automatically:
 Codex models use native Codex compaction (opaque checkpoints preserved), every
 other model uses Blackhole, exactly one engine acts per turn, and the selection
 is independent of extension registration order. On session start the
 coordinator appends `"skipForProviders": ["openai-codex"]` to
 `~/.pi/agent/pi-blackhole/pi-blackhole-config.json`, so Blackhole steps aside
-for Codex sessions (no compaction, no observational-memory consolidation). The
-fork adds the `skipForProviders` config (file or
-`PI_BLACKHOLE_SKIP_PROVIDERS` env var); once the focused upstream PR merges,
-switching back to the official release is a one-line dependency bump with no
-code changes. The coordinator warns once per session when the guarantee could
-degrade: config write failure, `PI_BLACKHOLE_SKIP_PROVIDERS` set without
-`openai-codex` (env shadows the file), or an installed pi-blackhole without
-the fork capability. The `/blackhole-memory` and `/blackhole-recall` commands
+for Codex sessions (no compaction, no observational-memory consolidation). A
+project-local `skipForProviders` list or the `PI_BLACKHOLE_SKIP_PROVIDERS`
+environment variable overrides the global list; the coordinator warns when
+either override omits a compatible `openai-codex` entry. Entries may be bare
+providers or `provider:api` pairs. It also warns if the installed Blackhole
+lacks the capability. The `/blackhole-memory` and `/blackhole-recall` commands
 remain available when Blackhole is loaded.
 
 ### Configuration entry points
@@ -480,7 +476,7 @@ The tarball must contain runtime extensions, themes, assets, README, license,
 `CHANGELOG.md`, and `THIRD-PARTY-NOTICES.md`; it must not depend on a bundled
 `node_modules/` directory. Run `pnpm smoke` to verify a clean install: it packs
 the tarball, installs it into a fresh temporary agent directory (resolving every
-exact dependency, including the pi-blackhole fork pin), asserts every manifest
+exact dependency, including the official pi-blackhole release), asserts every manifest
 path resolves, and boots the pi CLI the install resolved twice — once in print
 mode (reaching the auth stage "No API key found" is the success signal) and
 once in TUI-capable mode under a PTY, where the banner must render with no
@@ -490,8 +486,8 @@ exercises the compaction coordination at runtime: the coordinator must write
 driven through real compaction events to prove one-engine-per-turn — native
 Codex compaction for Codex sessions (blackhole steps aside) and blackhole for
 other providers. The smoke test needs network access to the npm registry and
-the pi-blackhole fork on GitHub, plus `script` (util-linux) and `tsx` on the
-host; it requires no OAuth, Codex, or quota credentials — provider requests
+`script` (util-linux) and `tsx` on the host; it requires no OAuth, Codex, or
+quota credentials — provider requests
 are not part of release verification.
 
 ```bash
