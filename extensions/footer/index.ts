@@ -20,7 +20,7 @@ import {
 	hasNerdFonts,
 	strWidth,
 } from "../shared/icons.ts";
-import { BorderlessTopEditor } from "./borderless-top-editor.ts";
+import { BoxEditor } from "./box-editor.ts";
 import { loadSettings } from "../shared/settings.ts";
 import {
 	fetchOpenAIUsage,
@@ -303,23 +303,18 @@ export default function (pi: ExtensionAPI) {
 
 		fetchGit();
 
-		// ── Custom editor: remove top border so widget merges into it ──────────
-		// Keep a live reference so the stats widget can read the current borderColor
-		// (which changes in bash-mode, thinking-mode, etc.)
-		let editorRef: { borderColor: (s: string) => string } | null = null;
+		// ── Custom editor: full box with live border color ───────────────────
 		if (ctx.hasUI) {
-			ctx.ui.setEditorComponent((tui, theme, keybindings) => {
-				const editor = new BorderlessTopEditor(tui, theme, keybindings);
-				editorRef = editor as any;
-				return editor;
-			});
+			ctx.ui.setEditorComponent((tui, theme, keybindings) =>
+				new BoxEditor(tui, theme, keybindings),
+			);
 		}
 
 		// Shared Symbol for session start (readable by editor for timer in └─┘)
 	const SYM_SS = Symbol.for("beautiful-pi:wgtSessionStart");
 	(globalThis as any)[SYM_SS] = sessionStart;
 
-	// ── ABOVE EDITOR: stats widget (2 lines) ─────────────────────────────
+	// ── ABOVE EDITOR: stats widget (1 line) ──────────────────────────────
 
 	ctx.ui.setWidget(
 		"stats-bar",
@@ -404,15 +399,6 @@ export default function (pi: ExtensionAPI) {
 					}
 
 
-					// ── Last line: ┌─┐ box top ───────────────────────────────────
-					const border = (s: string) =>
-						editorRef?.borderColor(s) ?? theme.fg("borderMuted", s);
-					widgetLines.push(
-						truncateToWidth(
-							`${border("┌")}${border("─".repeat(width - 2))}${border("┐")}`,
-							width,
-						),
-					);
 					return widgetLines;
 				},
 			};

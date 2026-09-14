@@ -26,7 +26,7 @@ beautiful-pi/
 │   │   └── index.ts              # startup banner widget
 │   ├── footer/
 │   │   ├── index.ts              # stats bar + footer widgets
-│   │   ├── borderless-top-editor.ts  # custom editor with ❯ prefix + timer
+│   │   ├── box-editor.ts             # boxed editor with ❯ prefix + timer
 │   │   └── openai-usage.ts       # OpenAI Codex quota fetcher/parser
 │   ├── assistant-style/
 │   │   └── index.ts              # patches AssistantMessageComponent rail

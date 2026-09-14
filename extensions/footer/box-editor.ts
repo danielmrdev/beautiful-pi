@@ -1,8 +1,8 @@
 /**
- * BoxEditor — Custom editor with triangle prefix and box-like bottom frame.
+ * BoxEditor — Custom editor with triangle prefix and full box frame.
  *
  * Follows the Archimedes pattern: separates content from autocomplete
- * lines, inserts a spacer between them, and draws a └─┘ bottom frame.
+ * lines, inserts a spacer between them, and draws live top/bottom frames.
  */
 
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
@@ -29,7 +29,7 @@ function trunc(s: string, maxW: number): string {
 	return truncateToWidth(s, Math.max(0, maxW), "", true);
 }
 
-export class BorderlessTopEditor extends CustomEditor {
+export class BoxEditor extends CustomEditor {
 	render(width: number): string[] {
 		const innerW = Math.max(1, width - 2);
 		const lines = super.render(innerW);
@@ -52,19 +52,23 @@ export class BorderlessTopEditor extends CustomEditor {
 		// Autocomplete lines (after separator)
 		const autoRaw = lines.slice(bottomIdx + 1);
 
-		// Build content lines with ❯ prefix and box side borders
+		// Build full box: top frame, content lines, autocomplete, bottom frame.
+		const topLine =
+			`${wrap("┌")}${wrap("─".repeat(Math.max(0, width - 2)))}${wrap("┐")}`;
+
 		// Content is truncated to width-1 so the trailing │ sits at the right
 		// edge, aligned with the ┐/┘ of the box frame. │ is box-drawing so it
 		// connects with the ┌ ┐ └ ┘ ├ ┤ corners.
 		const contentW = Math.max(1, width - 1);
-		const contentLines: string[] = contentRaw.map((line, i) => {
+		const contentLines: string[] = [topLine];
+		contentLines.push(...contentRaw.map((line, i) => {
 			const pre = leadingAnsi(line);
 			const body = line.slice(pre.length);
 			if (i === 0) {
 				return trunc(`${pre}${wrap(TRIANGLE)} ${body}`, contentW) + wrap("│");
 			}
 			return trunc(`${pre}${wrap("│")} ${body}`, contentW) + wrap("│");
-		});
+		}));
 
 		// Spacer before autocomplete (Archimedes pattern)
 		if (autoRaw.length > 0) {

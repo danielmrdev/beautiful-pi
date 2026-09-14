@@ -512,7 +512,7 @@ extensions/
 │   └── index.ts                # Startup banner (aboveEditor header)
 ├── footer/
 │   ├── index.ts                # Stats bar + footer widgets
-│   ├── borderless-top-editor.ts# Custom editor with ❯ prefix + timer
+│   ├── box-editor.ts           # Custom editor with ❯ prefix + timer
 │   └── openai-usage.ts         # OpenAI Codex quota fetcher/parser
 │   └── opencode-go-usage.ts    # OpenCode Go quota fetcher/parser
 ├── assistant-style/
