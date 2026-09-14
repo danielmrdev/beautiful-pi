@@ -16,6 +16,7 @@ interface RecordedEvents extends EventBus {
 export interface FakePi extends ExtensionAPI {
   events: RecordedEvents;
   commands: Map<string, unknown>;
+  shortcuts: Map<string, unknown>;
   toolRegistrations: Map<string, unknown>;
 }
 
@@ -58,15 +59,18 @@ export function fakePi(): FakePi {
     has(name: string) { return handlers.has(name); },
   };
   const commands = new Map<string, unknown>();
+  const shortcuts = new Map<string, unknown>();
   const toolRegistrations = new Map<string, unknown>();
   return {
     events,
     commands,
+    shortcuts,
     toolRegistrations,
     on(name: string, handler: Function) {
       events.on(name, handler as (data: unknown) => void);
     },
     registerCommand(name: string, config: unknown) { commands.set(name, config); },
+    registerShortcut(name: string, config: unknown) { shortcuts.set(name, config); },
     registerEntryRenderer(_kind: string, _renderer: unknown) {},
     registerTool(name: string, _def: unknown, _handler: unknown) {
       toolRegistrations.set(name, true);

@@ -1,4 +1,8 @@
-import { isOverBudgetLinear, type UsageSegment } from "../shared/openai-usage.ts";
+import {
+	formatUsagePaceBar,
+	isOverBudgetLinear,
+	type UsageSegment,
+} from "../shared/openai-usage.ts";
 
 const DASHBOARD_BASE = "https://opencode.ai/workspace";
 
@@ -178,7 +182,9 @@ export function openCodeGoUsageSegments(
 		const elapsed = windowSeconds - remaining;
 		parts.push({
 			text: `${Math.round(w.usagePercent)}% ${formatResetSeconds(remaining)}`,
+			paceBar: formatUsagePaceBar(w.usagePercent, elapsed, windowSeconds),
 			overBudget: isOverBudgetLinear(w.usagePercent, elapsed, windowSeconds),
+			exhausted: w.usagePercent >= 100,
 		});
 	}
 

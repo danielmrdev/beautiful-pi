@@ -169,9 +169,44 @@ export function formatReset(window: UsageWindow, now = Date.now()): string {
 	return `${total}s`;
 }
 
+export const USAGE_PACE_BAR_WIDTH = 12;
+export const USAGE_PACE_MARKER = "◆";
+
+const USAGE_PACE_USED = "━";
+const USAGE_PACE_REMAINING = "─";
+
+/** Render actual usage against the linear budget available at this moment. */
+export function formatUsagePaceBar(
+	usedPercent: number,
+	elapsedSeconds: number | undefined,
+	windowSeconds: number,
+	width = USAGE_PACE_BAR_WIDTH,
+): string {
+	if (elapsedSeconds === undefined || !Number.isFinite(elapsedSeconds)) {
+		return USAGE_PACE_REMAINING.repeat(width);
+	}
+
+	const safeWidth = Math.max(1, Math.floor(width));
+	const safeWindow = Math.max(1, windowSeconds);
+	const elapsed = Math.max(0, Math.min(safeWindow, elapsedSeconds));
+	const used = Math.max(0, Math.min(100, usedPercent));
+	const usedCells = Math.round((used / 100) * safeWidth);
+	const limitCell = Math.min(
+		safeWidth - 1,
+		Math.round((elapsed / safeWindow) * safeWidth),
+	);
+
+	return Array.from({ length: safeWidth }, (_, index) => {
+		if (index === limitCell) return USAGE_PACE_MARKER;
+		return index < usedCells ? USAGE_PACE_USED : USAGE_PACE_REMAINING;
+	}).join("");
+}
+
 export interface UsageSegment {
 	text: string;
+	paceBar: string;
 	overBudget: boolean;
+	exhausted: boolean;
 }
 
 /**
@@ -220,15 +255,23 @@ export function openAIUsageSegments(
 	const driftMs = now - fetchedAt;
 	const parts: UsageSegment[] = [];
 	if (usage.fiveHour) {
+		const window = usage.fiveHour;
+		const elapsed = windowElapsed(window, now, driftMs);
 		parts.push({
-			text: `${Math.round(usage.fiveHour.usedPercent)}% ${formatReset(usage.fiveHour, now)}`,
-			overBudget: overBudget(usage.fiveHour, now, driftMs),
+			text: `${Math.round(window.usedPercent)}% ${formatReset(window, now)}`,
+			paceBar: formatUsagePaceBar(window.usedPercent, elapsed, window.windowSeconds),
+			overBudget: overBudget(window, now, driftMs),
+			exhausted: window.usedPercent >= 100,
 		});
 	}
 	if (usage.sevenDay) {
+		const window = usage.sevenDay;
+		const elapsed = windowElapsed(window, now, driftMs);
 		parts.push({
-			text: `${Math.round(usage.sevenDay.usedPercent)}% ${formatReset(usage.sevenDay, now)}`,
-			overBudget: overBudget(usage.sevenDay, now, driftMs),
+			text: `${Math.round(window.usedPercent)}% ${formatReset(window, now)}`,
+			paceBar: formatUsagePaceBar(window.usedPercent, elapsed, window.windowSeconds),
+			overBudget: overBudget(window, now, driftMs),
+			exhausted: window.usedPercent >= 100,
 		});
 	}
 	return parts;

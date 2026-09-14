@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	formatOpenAIUsage,
+	formatUsagePaceBar,
 	parseOpenAIUsage,
 } from "./openai-usage.ts";
 
@@ -51,5 +52,13 @@ describe("OpenAI Codex usage", () => {
 	test("returns null for malformed responses", () => {
 		assert.equal(parseOpenAIUsage({ rate_limit: null }), null);
 		assert.equal(parseOpenAIUsage("not-json"), null);
+	});
+
+	test("renders pace bar with ideal limit ahead of actual usage", () => {
+		assert.equal(formatUsagePaceBar(30, 60, 100), "━━━━───◆────");
+	});
+
+	test("renders actual usage crossing ideal limit", () => {
+		assert.equal(formatUsagePaceBar(70, 30, 100), "━━━━◆━━━────");
 	});
 });

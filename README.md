@@ -312,6 +312,10 @@ Shows model, thinking level, context usage (bar + percentage) and the session ti
 - OpenCode Go subscription usage (5h, 7d, 30d tiers) — shown when using an
   OpenCode Go model. Requires `opencodeGoWorkspaceId` + `opencodeGoAuthCookie`
   in `beautiful-pi.json`
+- Usage pace view: press `Ctrl+Alt+U`, or click the usage segment in fullscreen
+  TUI, to replace percentages/reset times with 12-cell pace bars. `━` marks
+  consumed quota, `─` remaining quota and `◆` the ideal linear limit for now.
+  Over-pace bars use warning colour; exhausted quotas use error colour.
 
 **Toggle:** `showFooter` setting (default: `on`).
 

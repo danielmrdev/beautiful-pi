@@ -16,6 +16,7 @@ describe("footer extension", () => {
     mod.default(pi);
 
     assert.ok(pi.events.has("session_start"), "session_start handler registered");
+    assert.ok(pi.shortcuts.has("ctrl+alt+u"), "pace toggle shortcut registered");
   });
 
   test("does not throw on registration", async () => {

@@ -25,6 +25,7 @@ import { loadSettings } from "../shared/settings.ts";
 import {
 	fetchOpenAIUsage,
 	openAIUsageSegments,
+	USAGE_PACE_MARKER,
 	type OpenAIUsage,
 	type UsageSegment,
 } from "../shared/openai-usage.ts";
@@ -167,10 +168,26 @@ function formatCwd(
 
 // ── Git formatting ────────────────────────────────────────────────────────────
 
-/** Render usage segments: over-budget segments flagged, joined with a muted separator. */
-function renderUsageSegments(segments: UsageSegment[], theme: any): string {
+type UsageDisplayMode = "quota" | "pace";
+
+/** Render quota text or pace bars, joined with a muted separator. */
+function renderUsageSegments(
+	segments: UsageSegment[],
+	theme: any,
+	mode: UsageDisplayMode,
+): string {
 	return segments
-		.map((s) => (s.overBudget ? theme.fg("warning", s.text) : theme.fg("muted", s.text)))
+		.map((s) => {
+			if (mode === "pace") {
+				const color = s.exhausted ? "error" : s.overBudget ? "warning" : "muted";
+				const marker = s.paceBar.indexOf(USAGE_PACE_MARKER);
+				if (marker < 0) return theme.fg(color, s.paceBar);
+				return theme.fg(color, s.paceBar.slice(0, marker)) +
+					theme.fg("accent", USAGE_PACE_MARKER) +
+					theme.fg(color, s.paceBar.slice(marker + USAGE_PACE_MARKER.length));
+			}
+			return theme.fg(s.overBudget ? "warning" : "muted", s.text);
+		})
 		.join(theme.fg("muted", " | "));
 }
 
@@ -248,7 +265,19 @@ function bgLine(_theme: any, content: string, width: number): string {
 let _sessionStart: number = Date.now();
 
 export default function (pi: ExtensionAPI) {
+	let usageDisplayMode: UsageDisplayMode = "quota";
+	let requestUsageRender: (() => void) | undefined;
+
+	pi.registerShortcut("ctrl+alt+u", {
+		description: "Toggle provider quota pace view",
+		handler: async () => {
+			usageDisplayMode = usageDisplayMode === "quota" ? "pace" : "quota";
+			requestUsageRender?.();
+		},
+	});
+
 	pi.on("session_start", (event: any, ctx: ExtensionContext) => {
+		usageDisplayMode = "quota";
 		const settings = loadSettings();
 		if (!settings.showFooter) return;
 
@@ -421,7 +450,10 @@ export default function (pi: ExtensionAPI) {
 			let ocgLastAttempt = 0;
 			let ocgGeneration = 0;
 			let ocgWasVisible = false;
+			let usageHitbox: { start: number; end: number; y: number } | null = null;
 			const USAGE_REFRESH_MS = 120_000;
+			const requestRender = () => tui.requestRender();
+			requestUsageRender = requestRender;
 
 			async function refreshOpenAIUsage(): Promise<void> {
 				const model = ctx.model;
@@ -546,16 +578,39 @@ export default function (pi: ExtensionAPI) {
 					usageGeneration++;
 					ocgGeneration++;
 					unsub();
+					if (requestUsageRender === requestRender) requestUsageRender = undefined;
 				},
 				invalidate() {},
+				handleMouse(event: any) {
+					const hitbox = usageHitbox;
+					if (
+						event.type !== "click" ||
+						!hitbox ||
+						event.y !== hitbox.y ||
+						event.x < hitbox.start ||
+						event.x >= hitbox.end
+					) return;
+					usageDisplayMode = usageDisplayMode === "quota" ? "pace" : "quota";
+					tui.requestRender();
+					return { handled: true };
+				},
 				render(width: number): string[] {
 					const usableW = width - 2;
 					const icons = getIcons();
+					usageHitbox = null;
 					let usageLabel = "";
 					if (openAIUsage) {
-						usageLabel = renderUsageSegments(openAIUsageSegments(openAIUsage, openAIUsageFetchedAt), theme);
+						usageLabel = renderUsageSegments(
+							openAIUsageSegments(openAIUsage, openAIUsageFetchedAt),
+							theme,
+							usageDisplayMode,
+						);
 					} else if (openCodeGoUsage) {
-						usageLabel = renderUsageSegments(openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageFetchedAt), theme);
+						usageLabel = renderUsageSegments(
+							openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageFetchedAt),
+							theme,
+							usageDisplayMode,
+						);
 					}
 					const usage = usageLabel
 						? theme.fg("accent", icons.quota) + " " + usageLabel
@@ -575,6 +630,11 @@ export default function (pi: ExtensionAPI) {
 					}
 					if (leftW + 1 + usageW <= usableW) {
 						const gap = Math.max(1, usableW - leftW - usageW);
+						usageHitbox = {
+							start: 1 + leftW + gap,
+							end: 1 + leftW + gap + usageW,
+							y: 0,
+						};
 						return [bgLine(theme, left + " ".repeat(gap) + usage, width)];
 					}
 
@@ -583,6 +643,7 @@ export default function (pi: ExtensionAPI) {
 					const cwdMax2 = Math.max(0, usableW - gitPartW - 1);
 					const cwd2 = formatCwd(ctx.cwd, cwdMax2, theme);
 					const left2 = !git ? cwd2.text : cwd2.text + "  " + git.text;
+					usageHitbox = { start: 1, end: 1 + usageW, y: 1 };
 					return [
 						bgLine(theme, left2, width),
 						bgLine(theme, usage, width),
