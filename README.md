@@ -15,14 +15,17 @@ Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono)
 
 ---
 
-**Features:** 
+**Features:**
 - Animated startup banner
 - Status footer with model, effort, session name, folder, git state and context usage
 - Cohesive rail-styled chat layout
-- One-line tool output
+- One-line tool output for built-in and generic/MCP tools
 - Session auto-naming
 - OpenAI Codex usage monitor
 - OpenCode Go usage monitor
+- Codex account, pool, chain and preset routing with rate-limit failover
+- Provider-aware compaction coordination between Codex and Blackhole
+- Optional Herdr pane-label synchronisation
 - Two Tokyo Night colour themes
 - Custom settings TUI
 
@@ -89,23 +92,46 @@ Or from the settings file (`~/.pi/agent/settings.json`):
 
 Available themes: `tokyo-night`, `tokyo-night-nord`.
 
+### Built-in extensions
+
+These extensions are part of beautiful-pi itself and are loaded by
+`extensions/index.ts`:
+
+| Extension | Purpose |
+| --- | --- |
+| **Banner** | Animated startup header with agent info and loaded resources; hides on first input. |
+| **Footer** | Stats bar, cwd/Git footer, session timer editor, OpenAI Codex quota and OpenCode Go usage monitors. |
+| **One-line tools** | Compact rendering for `bash`, `read`, `write`, `edit`, `grep`, `find`, `ls`, plus a generic rail for MCP and other tools. |
+| **Assistant style** | Agent message rendering with thinking rail and text/error styling. |
+| **User style** | Rail-styled user messages. |
+| **Custom message style** | Rail-styled custom messages such as web-search and skill output. |
+| **Session title** | Generates a short title from the first user message, with truncation fallback. |
+| **Settings** | `/bpi` settings TUI; `/beautiful-pi` remains as a legacy alias. |
+| **Codex accounts** | `/codex` account, pool, chain and preset management, OAuth provider registration and rate-limit failover. |
+| **Compaction coordinator** | Selects native Codex compaction for Codex models and Blackhole for other providers. |
+| **Herdr pane sync** | Mirrors the Pi session name to the active Herdr pane when running inside Herdr. |
+
 ### Included integrations
 
 One `pi install beautiful-pi` enables this curated package catalog automatically;
 no second package install is needed. Upstream packages remain normal npm
 dependencies, pinned exactly in `package.json`:
 
-| Category | Bundled package | Version | Repo |
-| --- | --- | ---: | --- |
-| Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.5 | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
-| Compaction | `pi-blackhole` | 0.5.2 | [repo](https://github.com/k0valik/pi-blackhole) |
-| Context | `@hypabolic/pi-hypa` | 0.1.14 | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
-| Context | `pi-rtk-optimizer` | 0.9.0 | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
-| Workflows | `@plannotator/pi-extension` | 0.27.13 | [repo](https://github.com/backnotprop/plannotator) |
-| Workflows | `@tintinweb/pi-subagents` | 0.19.0 | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.9.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.9.0 | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
-| Themes | `tokyo-night`, `tokyo-night-nord` (bundled themes) | — | [theme docs](#themes) |
+| Category | Bundled package | Version | Purpose | Repo |
+| --- | --- | ---: | --- | --- |
+| Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.5 | Native remote compaction for OpenAI Codex. | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
+| Compaction | `pi-blackhole` | 0.5.2 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
+| Context | `@hypabolic/pi-hypa` | 0.1.14 | Local compression for shell commands and tool output. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
+| Context | `pi-rtk-optimizer` | 0.9.0 | RTK command rewriting and tool-output compaction. | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
+| Workflows | `@plannotator/pi-extension` | 0.27.13 | Interactive plan and code/PR review. | [repo](https://github.com/backnotprop/plannotator) |
+| Workflows | `@tintinweb/pi-subagents` | 0.19.0 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.9.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.9.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Themes | `tokyo-night`, `tokyo-night-nord` (bundled themes) | — | Pi colour themes. | [theme docs](#themes) |
+
+The package also ships the Plannotator skill at
+`skills/plannotator/SKILL.md` and the `/btw` system prompt at
+`prompts/btw-system.txt`.
 
 `pi-blackhole@0.5.2` is the official release and includes the
 `skipForProviders` capability used to keep Codex and Blackhole compaction
@@ -372,10 +398,10 @@ configurable via `sessionTitle` setting (default: `on`).
 
 ---
 
-### /beautiful-pi command
+### `/bpi` settings command
 
-Opens a TUI settings panel where you can toggle all features and pick rail
-colours:
+`/bpi` opens a TUI settings panel where you can toggle all features and pick
+rail colours. `/beautiful-pi` is retained as an alias:
 
 ```
 ╭───  beautiful-pi settings ────────────────────────────────╮
@@ -507,7 +533,14 @@ extensions/
 │   ├── icons.ts                # Nerd Fonts detection, icon sets, strWidth()
 │   └── settings.ts             # Settings loader, safe colour helpers, tests
 ├── settings/
-│   └── index.ts                # `/beautiful-pi` command (SettingsList TUI)
+│   └── index.ts                # `/bpi` + `/beautiful-pi` settings commands
+├── codex-accounts/
+│   └── index.ts                # `/codex` accounts, pools, chains and failover
+├── compaction/
+│   ├── index.ts                # Provider-aware compaction entry point
+│   └── coordinator.ts          # Codex/Blackhole engine coordination
+├── herdr-pane-sync/
+│   └── index.ts                # Optional Herdr pane-label synchronisation
 ├── banner/
 │   └── index.ts                # Startup banner (aboveEditor header)
 ├── footer/

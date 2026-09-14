@@ -192,6 +192,14 @@ git config core.hooksPath .githooks
 
 Run manually: `npm run gitleaks:scan` or `npm run gitleaks:staged`.
 
+## README synchronization
+
+Every repository change requires a README review. Keep `README.md` synchronized in
+same change whenever behavior, commands, configuration, dependencies, extension
+or plugin lists, versions, installation, or architecture changes. Treat README
+sync as part of completion criteria; verify it against `package.json`, the `pi`
+manifest, and the current extension tree before reporting work done.
+
 ## Build and runtime
 
 - **No build step.** Pi loads `.ts` files directly at runtime.
