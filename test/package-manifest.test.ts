@@ -18,7 +18,6 @@ const expectedDependencies = {
 
 const expectedPublishFiles = [
   "extensions",
-  "themes",
   "assets",
   "README.md",
   "CHANGELOG.md",
@@ -41,7 +40,6 @@ const expectedManifest = {
   ],
   skills: ["../@plannotator/pi-extension/skills/plannotator/SKILL.md"],
   prompts: ["../@juicesharp/rpiv-btw/prompts/btw-system.txt"],
-  themes: ["./themes/tokyo-night.json", "./themes/tokyo-night-nord.json"],
 };
 
 test("package catalog pins selected integrations and resources explicitly", () => {
@@ -58,7 +56,7 @@ test("package catalog pins selected integrations and resources explicitly", () =
     assert.ok(entries.every((entry) => !/[?*{}]/.test(entry)));
   }
 
-  for (const entry of [...expectedManifest.extensions, ...expectedManifest.themes]) {
+  for (const entry of expectedManifest.extensions) {
     if (entry.startsWith("./")) {
       assert.equal(
         existsSync(resolve(__dirname, "../", entry)),

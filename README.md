@@ -1,6 +1,6 @@
 # Beautiful Pi
 
-Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
+Beautiful UI extensions for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
 
 <div align="center">
 
@@ -26,7 +26,6 @@ Beautiful UI extensions and themes for [pi](https://github.com/badlogic/pi-mono)
 - Codex account, pool, chain and preset routing with rate-limit failover
 - Provider-aware compaction coordination between Codex and Blackhole
 - Optional Herdr pane-label synchronisation
-- Two Tokyo Night colour themes
 - Custom settings TUI
 
 ## Installation
@@ -74,24 +73,6 @@ ln -s "$(pwd)" ~/.pi/agent/npm/node_modules/beautiful-pi
 Then `/reload` — every repo change is live on the next reload, no reinstall
 needed. Run `npm run test` and `npx tsc --noEmit` before pushing.
 
-### Enable themes
-
-Set a theme in pi:
-
-```
-/theme tokyo-night
-```
-
-Or from the settings file (`~/.pi/agent/settings.json`):
-
-```json
-{
-  "theme": "tokyo-night"
-}
-```
-
-Available themes: `tokyo-night`, `tokyo-night-nord`.
-
 ### Built-in extensions
 
 These extensions are part of beautiful-pi itself and are loaded by
@@ -127,7 +108,6 @@ dependencies, pinned exactly in `package.json`:
 | Workflows | `@tintinweb/pi-subagents` | 0.19.0 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
 | Interaction | `@juicesharp/rpiv-ask-user-question` | 2.9.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
 | Interaction | `@juicesharp/rpiv-btw` | 2.9.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
-| Themes | `tokyo-night`, `tokyo-night-nord` (bundled themes) | — | Pi colour themes. | [theme docs](#themes) |
 
 The package also ships the Plannotator skill at
 `skills/plannotator/SKILL.md` and the `/btw` system prompt at
@@ -472,22 +452,6 @@ tokens: `accent`, `border`, `borderAccent`, `borderMuted`, `muted`, `dim`,
 
 ---
 
-## Themes
-
-### Tokyo Night
-
-A faithful adaptation of the classic [Tokyo Night](https://github.com/folke/tokyonight.nvim)
-colour palette for pi. Deep blue-grey background (`#1a1b26`) with vibrant accent
-colours.
-
-### Tokyo Night Nord
-
-A hybrid theme that blends Tokyo Night's syntax colours with a Nord-like cooler
-palette. Uses a slightly lighter accent set while keeping the same deep
-background.
-
----
-
 ## Publishing
 
 Run release checks before publishing:
@@ -498,7 +462,7 @@ pnpm test          # complete automated suite
 pnpm pack:check    # inspect tarball contents
 ```
 
-The tarball must contain runtime extensions, themes, assets, README, license,
+The tarball must contain runtime extensions, assets, README, license,
 `CHANGELOG.md`, and `THIRD-PARTY-NOTICES.md`; it must not depend on a bundled
 `node_modules/` directory. Run `pnpm smoke` to verify a clean install: it packs
 the tarball, installs it into a fresh temporary agent directory (resolving every

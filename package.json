@@ -1,7 +1,7 @@
 {
   "name": "beautiful-pi",
   "version": "0.1.0",
-  "description": "Beautiful UI extensions and themes for pi \u2014 footer, banner, themes, and Nerd Fonts support",
+  "description": "Beautiful UI extensions for pi \u2014 footer, banner, and Nerd Fonts support",
   "keywords": [
     "pi-package",
     "pi",
@@ -20,7 +20,6 @@
   "homepage": "https://github.com/danielmrdev/beautiful-pi#readme",
   "files": [
     "extensions",
-    "themes",
     "assets",
     "README.md",
     "CHANGELOG.md",
@@ -73,10 +72,6 @@
     ],
     "prompts": [
       "../@juicesharp/rpiv-btw/prompts/btw-system.txt"
-    ],
-    "themes": [
-      "./themes/tokyo-night.json",
-      "./themes/tokyo-night-nord.json"
     ],
     "image": "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png"
   }

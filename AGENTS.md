@@ -5,10 +5,10 @@ beautiful-pi. It describes project structure, conventions, and patterns.
 
 ## What this project is
 
-`beautiful-pi` is a **pi package** — UI extensions and themes for the
+`beautiful-pi` is a **pi package** — UI extensions for the
 [`@mariozechner/pi-coding-agent`](https://github.com/badlogic/pi-mono) CLI
 (aka pi). It improves pi's terminal UI with an animated banner, status footer,
-rail-styled chat messages, one-line tool output, and colour themes.
+rail-styled chat messages, and one-line tool output.
 
 ## Repository layout
 
@@ -47,9 +47,6 @@ beautiful-pi/
 │       ├── register-find.ts      # label for find tool
 │       ├── register-ls.ts        # label for ls tool
 │       └── register-generic.ts   # fallback rail for unregistered tools
-├── themes/
-│   ├── tokyo-night.json
-│   └── tokyo-night-nord.json
 └── .githooks/
     └── pre-commit                # gitleaks secret scan
 ```
