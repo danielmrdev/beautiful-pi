@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Declared support for Pi 0.85.x–0.86.x and updated the peer range to
+  `>=0.85.1 <0.87.0`.
+- Upgraded the official `pi-blackhole` integration from 0.5.2 to 0.5.6 for
+  Pi 0.86-compatible worker and compaction fixes while preserving Codex
+  provider coordination.
 - Updated the curated third-party integrations to the latest exact releases:
   `@ogulcancelik/pi-codex-compaction` 0.1.5, `@hypabolic/pi-hypa` 0.1.14,
   `@plannotator/pi-extension` 0.27.13, `@tintinweb/pi-subagents` 0.19.0,

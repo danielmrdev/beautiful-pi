@@ -12,13 +12,13 @@ dependencies. They remain owned and maintained by their upstream authors.
 | [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.9.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
 | [`pi-rtk-optimizer`](https://github.com/MasuRii/pi-rtk-optimizer) | 0.9.0 | MasuRii | MIT | [README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
 | [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.9.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
-| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.2 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
+| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.6 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
 This table covers all eight direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
 
-`pi-blackhole@0.5.2` is the official release and includes the
+`pi-blackhole@0.5.6` is the official release and includes the
 `skipForProviders` capability used by beautiful-pi to coordinate it with
 Codex compaction. The MIT notice below applies to the upstream package.
 

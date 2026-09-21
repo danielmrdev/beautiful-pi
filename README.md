@@ -32,7 +32,7 @@ Beautiful UI extensions for [pi](https://github.com/badlogic/pi-mono), the termi
 
 ### Prerequisites
 
-- [pi](https://github.com/badlogic/pi-mono) — install it globally
+- [pi](https://github.com/badlogic/pi-mono) `0.85.x–0.86.x` — install it globally
 - A [Nerd Font](https://www.nerdfonts.com/) installed and configured in your
   terminal (recommended). The extensions degrade gracefully with ASCII fallbacks.
 
@@ -101,7 +101,7 @@ dependencies, pinned exactly in `package.json`:
 | Category | Bundled package | Version | Purpose | Repo |
 | --- | --- | ---: | --- | --- |
 | Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.5 | Native remote compaction for OpenAI Codex. | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
-| Compaction | `pi-blackhole` | 0.5.2 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
+| Compaction | `pi-blackhole` | 0.5.6 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
 | Context | `@hypabolic/pi-hypa` | 0.1.14 | Local compression for shell commands and tool output. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
 | Context | `pi-rtk-optimizer` | 0.9.0 | RTK command rewriting and tool-output compaction. | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
 | Workflows | `@plannotator/pi-extension` | 0.27.13 | Interactive plan and code/PR review. | [repo](https://github.com/backnotprop/plannotator) |
@@ -113,10 +113,11 @@ The package also ships the Plannotator skill at
 `skills/plannotator/SKILL.md` and the `/btw` system prompt at
 `prompts/btw-system.txt`.
 
-`pi-blackhole@0.5.2` is the official release and includes the
+`pi-blackhole@0.5.6` is the official release and includes the
 `skipForProviders` capability used to keep Codex and Blackhole compaction
-engines mutually exclusive. See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md)
-for ownership and licenses.
+engines mutually exclusive, plus Pi 0.86-compatible worker and compaction
+fixes. See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership
+and licenses.
 
 ### Provider and compaction commands
 
@@ -246,7 +247,7 @@ Save this at `~/.pi/agent/pi-codex-compaction.json`; project-local
 Pi's `settings.json` still controls Pi's own threshold. Other providers use
 Pi's normal lifecycle.
 
-`pi-blackhole@0.5.2` includes the provider-aware skip capability. Compaction
+`pi-blackhole@0.5.6` includes the provider-aware skip capability. Compaction
 engine selection is coordinated automatically:
 Codex models use native Codex compaction (opaque checkpoints preserved), every
 other model uses Blackhole, exactly one engine acts per turn, and the selection

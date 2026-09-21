@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.85.1
+        specifier: '>=0.85.1 <0.87.0'
         version: 0.85.1(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.85.1
+        specifier: '>=0.85.1 <0.87.0'
         version: 0.85.1(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: ^0.85.1
+        specifier: '>=0.85.1 <0.87.0'
         version: 0.85.1
       '@hypabolic/pi-hypa':
         specifier: 0.1.14
@@ -36,8 +36,8 @@ importers:
         specifier: 0.19.0
         version: 0.19.0(@earendil-works/pi-ai@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1)
       pi-blackhole:
-        specifier: 0.5.2
-        version: 0.5.2(@earendil-works/pi-agent-core@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-ai@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1)
+        specifier: 0.5.6
+        version: 0.5.6(@earendil-works/pi-agent-core@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-ai@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1)
       pi-rtk-optimizer:
         specifier: 0.9.0
         version: 0.9.0(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1)
@@ -976,13 +976,13 @@ packages:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
     engines: {node: '>=8'}
 
-  pi-blackhole@0.5.2:
-    resolution: {integrity: sha512-tdt4w6V8xrx9WndcvxV41BIdP3+NGLk4XuDGnj466INQVa7V6fsvIx3HSZm8uaURW3xgbg8zy+NkB7YEokPhcQ==}
+  pi-blackhole@0.5.6:
+    resolution: {integrity: sha512-pvRhkp2T+9aWsfbkkd1Am6dAy8zFQ+yBRdPI+iBFbcRfU1P7dkTq5ncbdEMAtkitI6aTXoNlzYyTjO8EC6bTJw==}
     peerDependencies:
-      '@earendil-works/pi-agent-core': '>=0.81.1 <1.0.0'
-      '@earendil-works/pi-ai': '>=0.81.1 <1.0.0'
-      '@earendil-works/pi-coding-agent': '>=0.81.1 <1.0.0'
-      '@earendil-works/pi-tui': '>=0.81.1 <1.0.0'
+      '@earendil-works/pi-agent-core': '>=0.85.1 <1.0.0'
+      '@earendil-works/pi-ai': '>=0.85.1 <1.0.0'
+      '@earendil-works/pi-coding-agent': '>=0.85.1 <1.0.0'
+      '@earendil-works/pi-tui': '>=0.85.1 <1.0.0'
 
   pi-rtk-optimizer@0.9.0:
     resolution: {integrity: sha512-yj5DEdutRco5WvYEMEO0krZJP5Z6CpuNZoxlXSGmHEi2srB5Gao1xah/RnmVDn2se1FcqlmtS8+K/nzzkq0Pug==}
@@ -2168,7 +2168,7 @@ snapshots:
 
   path-key@3.1.1: {}
 
-  pi-blackhole@0.5.2(@earendil-works/pi-agent-core@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-ai@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1):
+  pi-blackhole@0.5.6(@earendil-works/pi-agent-core@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-ai@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.85.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.85.1):
     dependencies:
       '@earendil-works/pi-agent-core': 0.85.1(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-ai': 0.85.1(ws@8.21.1)(zod@4.4.3)
