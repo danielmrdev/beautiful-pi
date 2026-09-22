@@ -95,7 +95,7 @@ export interface IconSet {
 }
 
 export const NERD_ICONS: IconSet = {
-  pi:       "\uE22C",   // nf-oct-pi
+  pi:       "βπ",       // beta + pi
   folder:   "\uF115",   // nf-fa-folder_open
   git:      "\uF1D3",   // nf-fa-git
   branch:   "\uF418",   // nf-oct-git_branch
@@ -116,7 +116,7 @@ export const GITHUB_ICON  = "\uF113"; // nf-fa-github_alt (same as p10k VCS_GIT_
 export const GITHUB_ICON_ASCII = "gh";
 
 export const ASCII_ICONS: IconSet = {
-  pi:     "\u03C0",    // π Greek small letter pi (standard 1-cell)
+  pi:     "βπ",       // beta + pi (standard 2-cell)
   folder: "",          // nothing — path already starts with ~/
   git:    "",          // nothing — just show branch
   branch: "\u2387",    // ⎇

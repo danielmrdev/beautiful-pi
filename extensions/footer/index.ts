@@ -2,7 +2,7 @@
  * Pi status bars:
  *
  * ABOVE EDITOR (widget):
- *   π  model • thinking  [████░░░░░░░░] 45%  ↑12k ↓3k  $0.031  0:42
+ *   βπ  model • thinking  [████░░░░░░░░] 45%  ↑12k ↓3k  $0.031  0:42
  *
  * FOOTER (below editor):
  *   ~/projects/my-project  ⎇ main ↑2 ↓1 +3 !2 ?1
