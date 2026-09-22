@@ -12,7 +12,7 @@ const expectedDependencies = {
   "@ogulcancelik/pi-codex-compaction": "0.1.5",
   "@plannotator/pi-extension": "0.27.13",
   "@tintinweb/pi-subagents": "0.19.0",
-  "pi-blackhole": "0.5.6",
+  "pi-blackhole": "0.5.7",
   "pi-rtk-optimizer": "0.9.0",
 };
 
