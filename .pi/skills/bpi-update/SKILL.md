@@ -55,6 +55,46 @@ Every stage ends with its completion criterion. Keep unrelated work out of diff.
 **Done when:** repository is clean, branch/remote are known, current versions
 are recorded, and baseline failures are classified as pre-existing or blocking.
 
+## 0.5 Versioning and changelog rules
+
+Treat `package.json` as the single source of truth for b-pi's version. Use
+Semantic Versioning and release tags in the form `v<version>`:
+
+- patch — backwards-compatible fixes and small corrections;
+- minor — backwards-compatible features;
+- major — breaking changes. Before 1.0.0, breaking changes increment minor.
+
+Keep `CHANGELOG.md` in English. Put unreleased work under `Unreleased`, using
+short, user-facing bullets grouped under `Added`, `Changed`, `Fixed`, or
+`Removed`. Do not claim a fix until a test or verification step proves it.
+
+For a release:
+
+1. Choose the bump from the actual diff; do not bump for unrelated metadata.
+2. Update `package.json` to the new version. The lockfile has no second b-pi
+   version to edit; inspect it before changing anything.
+3. Move completed `Unreleased` entries to `## [<version>] - YYYY-MM-DD`, then
+   recreate an empty `Unreleased` section above it.
+4. Confirm the manifest and changelog agree:
+
+   ```bash
+   version=$(node -p "require('./package.json').version")
+   grep -F "## [$version]" CHANGELOG.md
+   ```
+
+5. Include version, changelog, code, tests, and README changes in one release
+   commit. Create an annotated tag only after that commit exists:
+
+   ```bash
+   git tag -a "v$version" -m "beautiful-pi $version"
+   ```
+
+6. Push the verified branch and tag. Never move or overwrite an existing
+   release tag.
+
+**Done when:** release version, changelog entry, release commit, and tag name
+are explicit; no release tag is created before verification passes.
+
 ## 1. Inventory b-pi surface
 
 Derive inventory from the repository. Do not rely on memory or a hardcoded list.
@@ -212,8 +252,11 @@ matrix are explicit before the first source edit.
    patch.
 
 5. Synchronize the public surface:
-   - README prerequisites, integration table, config/default behavior;
-   - `CHANGELOG.md` under `Unreleased`;
+   - README prerequisites, integration table, config/default behavior, and
+     release instructions;
+   - `CHANGELOG.md` under `Unreleased`, or the selected release heading when
+     preparing a version;
+   - `package.json` version and release tag plan;
    - `THIRD-PARTY-NOTICES.md` exact version and ownership table;
    - manifest/catalog tests and compatibility fixtures.
 
@@ -306,23 +349,26 @@ unrelated files.
    ```bash
    git commit -m "<message>"
    git push <remote> <branch>
+   git push <remote> "v$version"
    ```
 
    If branch, remote, upstream, or working tree differs from the baseline, stop
    and ask. If push fails, preserve commit and report exact remote error; do not
-   rewrite history or force-push.
+   rewrite history or force-push. Do not push a tag unless this run prepared a
+   release version.
 
 5. Verify publication:
 
    ```bash
    git status --short
    git log -1 --oneline
-   git ls-remote <remote> refs/heads/<branch>
+   git ls-remote <remote> refs/heads/<branch> "refs/tags/v$version"
    ```
 
-**Done when:** commit exists, push resolves to that commit on the intended
-remote branch, working tree is clean, and final report names versions, changed
-paths, tests, warnings, commit, and push result.
+**Done when:** release commit and annotated tag exist when versioning was part
+of the run, push resolves to the intended remote branch/tag, worktree is clean,
+and final report names version, tag, changed paths, tests, warnings, commit,
+and push result.
 
 ## Final report
 
@@ -334,4 +380,4 @@ Return a terse release record:
 - baseline/candidate verification results;
 - known warnings and deferred risks;
 - report path;
-- commit hash and push target.
+- commit hash, release tag when created, and push target.

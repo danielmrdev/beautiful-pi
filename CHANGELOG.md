@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-09-22
+
 ### Changed
 
 - Declared support for Pi 0.85.x–0.87.x and updated the peer range to
@@ -28,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The startup banner now shows the b-pi version between the Pi version and the
+  active model.
 - `/codex` argument autocomplete: typing `/codex ` shows sections, subcommands,
   and existing account/pool/chain/preset refs in the editor dropdown.
 - `/codex account` command surface: add, authenticate, log out, remove, switch,
@@ -47,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model switches to the pool's next eligible member, and the interrupted
   request is re-sent. Each account is attempted at most once per request;
   non-rate-limit errors are never touched.
+
+### Fixed
+
+- The smoke test now packs and installs the current package version instead of
+  relying on a hardcoded old tarball filename.
 
 ## [0.1.0] — 2026-07-17
 

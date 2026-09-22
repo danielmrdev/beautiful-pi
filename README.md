@@ -287,7 +287,7 @@ remain available when Blackhole is loaded.
 On session start, beautiful-pi displays a fullscreen banner with:
 
 - **Left column:** Large π ASCII art with per-character fade-in animation, plus
-  agent info card (pi version, model, active theme).
+  agent info card (Pi version, b-pi version, model, active theme).
 - **Right column:** Resource listing — all loaded extensions, skills, and themes.
 
 The banner auto-hides on first input.
@@ -460,6 +460,11 @@ tokens: `accent`, `border`, `borderAccent`, `borderMuted`, `muted`, `dim`,
 ---
 
 ## Publishing
+
+Use `package.json` as the b-pi version source. For each release, choose a
+SemVer bump, move `Unreleased` entries in `CHANGELOG.md` to a dated version
+section, and create an annotated `v<version>` tag after the release commit.
+Never reuse or move an existing release tag.
 
 Run release checks before publishing:
 

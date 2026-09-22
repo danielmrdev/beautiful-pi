@@ -53,15 +53,19 @@ function loadArt(): string {
    ────────────────────────────────────────────────────────────────────────────── */
 
 const PI_PACKAGE_NAMES = ["@earendil-works/pi-coding-agent"];
+const BPI_PACKAGE_NAMES = ["beautiful-pi"];
 
 function packageJsonPath(nodeModulesRoot: string, pkgName: string): string {
 	return join(nodeModulesRoot, ...pkgName.split("/"), "package.json");
 }
 
-function readPackageVersion(pkgPath: string): string | null {
+function readPackageVersion(
+	pkgPath: string,
+	packageNames: string[] = PI_PACKAGE_NAMES,
+): string | null {
 	try {
 		const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-		if (PI_PACKAGE_NAMES.includes(pkg.name) && pkg.version)
+		if (packageNames.includes(pkg.name) && pkg.version)
 			return String(pkg.version);
 	} catch {
 		/* try next */
@@ -158,6 +162,32 @@ function getPiVersion(): string {
 
 	for (const p of candidates) {
 		const version = readPackageVersion(p);
+		if (version) return version;
+	}
+	return "?.?.?";
+}
+
+export function getBeautifulPiVersion(): string {
+	const candidates: string[] = [];
+	const add = (path: string | null | undefined) => {
+		if (path && !candidates.includes(path)) candidates.push(path);
+	};
+
+	// The banner is loaded from the package's extensions directory in both the
+	// source checkout and pi's installed package copy.
+	try {
+		add(require.resolve("../../package.json"));
+	} catch {
+		/* try package self-resolution below */
+	}
+	try {
+		add(require.resolve("beautiful-pi/package.json"));
+	} catch {
+		/* source checkout may not be self-resolvable */
+	}
+
+	for (const path of candidates) {
+		const version = readPackageVersion(path, BPI_PACKAGE_NAMES);
 		if (version) return version;
 	}
 	return "?.?.?";
@@ -966,6 +996,7 @@ function buildAgentCard(ctx: ExtensionContext, theme: Theme): string[] {
 				.replace(/\b\w/g, (c: string) => c.toUpperCase())
 		: "Default";
 	const version = getPiVersion();
+	const bpiVersion = getBeautifulPiVersion();
 	const modelName = ctx.model?.name || ctx.model?.id || "—";
 
 	const label = (t: string) => theme.fg("muted", t);
@@ -976,6 +1007,7 @@ function buildAgentCard(ctx: ExtensionContext, theme: Theme): string[] {
 		" (pi) CODING AGENT ",
 		[
 			{ kind: "line", text: `${label("version ")}  ${val(version, "mdCode")}` },
+			{ kind: "line", text: `${label("b-pi    ")}  ${val(bpiVersion, "mdCode")}` },
 			{
 				kind: "line",
 				text: `${label("model   ")}  ${val(modelName, "mdHeading")}`,

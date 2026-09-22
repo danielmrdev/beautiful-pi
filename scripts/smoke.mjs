@@ -49,7 +49,11 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const TARBALL = join(ROOT, "beautiful-pi-0.1.0.tgz");
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(join(ROOT, "package.json"), "utf8"),
+).version;
+const TARBALL_NAME = `beautiful-pi-${PACKAGE_VERSION}.tgz`;
+const TARBALL = join(ROOT, TARBALL_NAME);
 // The real load-phase signal is "Failed to load extension"; the "conflicts
 // with" branches are a safety net in case a future pi/provider prints one.
 const LOAD_ERROR_RE =
@@ -177,7 +181,11 @@ try {
     recursive: true,
     filter: (src) => {
       const base = src.split("/").pop();
-      return base !== "node_modules" && base !== ".git" && base !== "beautiful-pi-0.1.0.tgz";
+      return (
+        base !== "node_modules" &&
+        base !== ".git" &&
+        !/^beautiful-pi-.*\.tgz$/.test(base)
+      );
     },
   });
   ok("installing via pi's git-update command (npm install --omit=dev, root project)");
