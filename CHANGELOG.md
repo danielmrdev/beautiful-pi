@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-22
+
+### Changed
+
+- The above-editor stats widget now displays `xhigh` and `max` thinking levels,
+  and preserves unknown future levels instead of hiding them.
+
 ## [0.1.1] — 2026-09-22
 
 ### Changed

@@ -148,6 +148,8 @@ const THINKING_NERD: Record<string, string> = {
   low:     `${BRAIN_ICON} low`,
   medium:  `${BRAIN_ICON} med`,
   high:    `${BRAIN_ICON} high`,
+  xhigh:   `${BRAIN_ICON} xhigh`,
+  max:     `${BRAIN_ICON} max`,
 };
 
 const THINKING_ASCII: Record<string, string> = {
@@ -157,9 +159,14 @@ const THINKING_ASCII: Record<string, string> = {
   low:     "low",
   medium:  "med",
   high:    "high",
+  xhigh:   "xhigh",
+  max:     "max",
 };
 
 export function getThinkingText(level: string): string | undefined {
-  const map = hasNerdFonts() ? THINKING_NERD : THINKING_ASCII;
-  return map[level];
+  const nerdFonts = hasNerdFonts();
+  const map = nerdFonts ? THINKING_NERD : THINKING_ASCII;
+  const normalizedLevel = level.trim().toLowerCase();
+  if (!normalizedLevel) return undefined;
+  return map[normalizedLevel] ?? (nerdFonts ? `${BRAIN_ICON} ${level}` : level);
 }

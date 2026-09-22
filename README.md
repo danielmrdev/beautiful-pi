@@ -304,7 +304,7 @@ A two-line widget that replaces the default pi footer:
 
 #### Above the editor — stats bar
 
-Shows model, thinking level, context usage (bar + percentage) and the session title.
+Shows model, thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`), context usage (bar + percentage) and the session title. Unknown future levels are shown verbatim.
 
 #### Below the editor — cwd + git state + quota
 
