@@ -2,7 +2,7 @@
  * Pi status bars:
  *
  * ABOVE EDITOR (widget):
- *   βπ  model • thinking  [████░░░░░░░░] 45%  ↑12k ↓3k  $0.031  0:42
+ *   βπ  model • thinking  ━━━━━━┄┄┄┄┄┄ 45%  ↑12k ↓3k  $0.031  0:42
  *
  * FOOTER (below editor):
  *   ~/projects/my-project  ⎇ main ↑2 ↓1 +3 !2 ?1
@@ -381,17 +381,16 @@ export default function (pi: ExtensionAPI) {
 						contextWindow = (cu as any).contextWindow ?? 0;
 					}
 
-					// Progress bar
+					// Hairline context indicator
 					const barTotal = 12;
 					const barFilled = Math.min(barTotal, Math.round((contextPercent / 100) * barTotal));
 					let barColor: string;
 					if (contextPercent > 90) barColor = "error";
 					else if (contextPercent > 70) barColor = "warning";
 					else barColor = "success";
-					const bar = theme.fg("dim", "[") +
-						theme.fg(barColor, "█".repeat(barFilled)) +
-						theme.fg("dim", "░".repeat(barTotal - barFilled)) +
-						theme.fg("dim", "]");
+					const bar =
+						theme.fg(barColor, "━".repeat(barFilled)) +
+						theme.fg("dim", "┄".repeat(barTotal - barFilled));
 					const ctxStr = contextPercent > 90
 						? theme.fg("error", `${contextPercent}%`)
 						: contextPercent > 70
