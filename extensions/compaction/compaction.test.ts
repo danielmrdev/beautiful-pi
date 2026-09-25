@@ -21,8 +21,9 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const { pathToFileURL } = require("node:url");
 import { fakePi, type FakePi } from "../test-helpers.ts";
+import codexCompactionExtension from "./codex-engine.ts";
+import blackholeExtension from "./blackhole-engine.ts";
 import {
   NATIVE_COMPACTION_KIND,
   isOpenAICodexModel,
@@ -89,18 +90,6 @@ afterEach(() => {
 
 /** Wire both engines in the given order (no side effects). */
 async function wireEngines(order: "codex-first" | "blackhole-first"): Promise<FakePi> {
-  // The Codex package only ships TypeScript source. Load it dynamically so
-  // tsc does not typecheck an upstream 0.1.5 headers mismatch as part of our
-  // project; the real package loader also executes this source at runtime.
-  const { default: codexCompactionExtension } = await import(
-    pathToFileURL(require.resolve("@ogulcancelik/pi-codex-compaction/index.ts")).href,
-  );
-  // Use Blackhole's published bundle here. Its package also ships source
-  // files, but those target a different pi-tui type identity when typechecked
-  // from this project.
-  const { default: blackholeExtension } = await import(
-    pathToFileURL(require.resolve("pi-blackhole/dist/index.js")).href,
-  );
   const pi = fakePi();
   (pi as any).getAllTools = () => [];
   (pi as any).getActiveTools = () => [];

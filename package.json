@@ -58,14 +58,14 @@
   "pi": {
     "extensions": [
       "./extensions/index.ts",
-      "../@ogulcancelik/pi-codex-compaction/index.ts",
+      "./extensions/compaction/codex-engine.ts",
       "../@hypabolic/pi-hypa/extensions/index.ts",
       "../@plannotator/pi-extension/index.ts",
       "../@tintinweb/pi-subagents/src/index.ts",
       "../@juicesharp/rpiv-ask-user-question/index.ts",
       "../pi-rtk-optimizer/index.ts",
       "../@juicesharp/rpiv-btw/index.ts",
-      "../pi-blackhole/dist/index.js"
+      "./extensions/compaction/blackhole-engine.ts"
     ],
     "skills": [
       "../@plannotator/pi-extension/skills/plannotator/SKILL.md"

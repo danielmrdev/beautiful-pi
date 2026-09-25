@@ -27,6 +27,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 // tsx transpiles the CJS-typed coordinator.ts to require() calls; its
@@ -40,29 +41,19 @@ if (!installedDir || !agentDir) {
   process.exit(2);
 }
 
-/**
- * Resolve a sibling dependency. Installed layout: npmDir/node_modules/
- * beautiful-pi with siblings in npmDir/node_modules. Dev layout: the repo
- * itself (installedDir = repo root) with siblings in installedDir/node_modules.
- */
-function resolveSibling(name: string, subpath: string): string {
-  const sibling = join(installedDir, "..", name, subpath);
-  if (existsSync(sibling)) return sibling;
-  return join(installedDir, "node_modules", name, subpath);
-}
-
-const blackholeDist = resolveSibling("pi-blackhole", "dist/index.js");
+const fromPackage = createRequire(join(installedDir, "package.json"));
 const coordinatorPath = join(installedDir, "extensions", "compaction", "coordinator.ts");
 const testHelpersPath = join(installedDir, "extensions", "test-helpers.ts");
 const fixturesPath = join(installedDir, "extensions", "compaction", "fixtures.ts");
-const codexIndexPath = resolveSibling("@ogulcancelik/pi-codex-compaction", "index.ts");
-const nativeCompactionPath = resolveSibling("@ogulcancelik/pi-codex-compaction", "native-compaction.ts");
+const codexEnginePath = join(installedDir, "extensions", "compaction", "codex-engine.ts");
+const blackholeEnginePath = join(installedDir, "extensions", "compaction", "blackhole-engine.ts");
+const nativeCompactionPath = fromPackage.resolve("@ogulcancelik/pi-codex-compaction/native-compaction.ts");
 const requiredModules = [
-  ["pi-blackhole dist", blackholeDist],
   ["compaction coordinator", coordinatorPath],
   ["fake ExtensionAPI", testHelpersPath],
   ["compaction fixtures", fixturesPath],
-  ["pi-codex-compaction", codexIndexPath],
+  ["pi-codex-compaction entry", codexEnginePath],
+  ["pi-blackhole entry", blackholeEnginePath],
   ["pi-codex-compaction native module", nativeCompactionPath],
 ];
 for (const [label, p] of requiredModules) {
@@ -85,16 +76,17 @@ interface CompactResult {
 async function main(): Promise<number> {
   // Load the installed artifacts only after the caller set the agent dir env,
   // so both modules resolve the same clean config location.
-  const [{ default: blackholeExtension }, coordinator, { fakePi }, fixtures, codexIndex, nativeCompaction] =
+  const [coordinator, { fakePi }, fixtures, codexEngine, blackholeEngine, nativeCompaction] =
     await Promise.all([
-      import(pathToFileURL(blackholeDist).href),
       import(pathToFileURL(coordinatorPath).href),
       import(pathToFileURL(testHelpersPath).href),
       import(pathToFileURL(fixturesPath).href),
-      import(pathToFileURL(codexIndexPath).href),
+      import(pathToFileURL(codexEnginePath).href),
+      import(pathToFileURL(blackholeEnginePath).href),
       import(pathToFileURL(nativeCompactionPath).href),
     ]);
-  const { default: codexCompactionExtension } = codexIndex as { default: (pi: unknown) => void };
+  const { default: codexCompactionExtension } = codexEngine as { default: (pi: unknown) => void };
+  const { default: blackholeExtension } = blackholeEngine as { default: (pi: unknown) => Promise<void> };
   const { NATIVE_COMPACTION_KIND } = nativeCompaction as { NATIVE_COMPACTION_KIND: string };
   const {
     CODEX_MODEL,

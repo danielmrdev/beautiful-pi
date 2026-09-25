@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Load Codex compaction and Blackhole from beautiful-pi's pinned dependencies,
+  not stale shared npm siblings; reject mismatched versions instead of silently
+  using the wrong engine.
+- Document Pi's active `reserveTokens` compaction threshold and linked-checkout
+  dependency updates.
+
 ## [0.1.4] — 2026-09-23
 
 ### Changed

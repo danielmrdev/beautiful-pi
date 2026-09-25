@@ -16,8 +16,8 @@
  * and warns loudly when the coordination could silently degrade (config write
  * failure, env/project override shadowing, or an installed pi-blackhole
  * without the capability). The Codex side has its
- * own separate configuration (`~/.pi/agent/pi-codex-compaction.json`,
- * autoCompact + thresholdRatio) — never touched here.
+ * own legacy fallback configuration (`~/.pi/agent/pi-codex-compaction.json`)
+ * for Pi <0.84.4; modern Pi controls the threshold via reserveTokens.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";

@@ -37,15 +37,17 @@
  *      through real session_before_compact events and assert
  *      one-engine-per-turn (openai-codex → native compaction, blackhole
  *      steps aside; non-Codex → blackhole compacts).
+ *   7. Simulate stale shared compaction packages alongside pinned nested
+ *      dependencies and repeat the runtime compaction check.
  *
  * Requires network (npm registry), a PTY runner (`script` from util-linux),
  * and tsx. Run with `pnpm smoke`. Not part
  * of the offline unit suite.
  */
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, cpSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync, cpSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -344,6 +346,46 @@ try {
     ok("compaction coordination exercised at runtime (codex → native, other → blackhole)");
   } else {
     fail(`compaction runtime check failed:\n${(guard.stderr || guard.stdout || "").slice(0, 800)}`);
+  }
+
+  // 7. A shared npm directory can retain older direct dependencies after
+  //     updating beautiful-pi. npm then nests the pinned ones inside it.
+  //     Make that layout explicit, so loading a sibling path fails this check.
+  for (const [name, oldVersion, entry] of [
+    ["@ogulcancelik/pi-codex-compaction", "0.1.3", "index.ts"],
+    ["pi-blackhole", "0.4.3", "dist/index.js"],
+  ]) {
+    const shared = join(npmDir, "node_modules", name);
+    const nested = join(installed, "node_modules", name);
+    mkdirSync(dirname(nested), { recursive: true });
+    renameSync(shared, nested);
+    mkdirSync(dirname(join(shared, entry)), { recursive: true });
+    writeFileSync(join(shared, "package.json"), JSON.stringify({ name, version: oldVersion }));
+    writeFileSync(join(shared, entry), "export default function () {}\n");
+  }
+  ok("booting pi with stale shared npm siblings and pinned nested engines");
+  const nestedBoot = run(
+    installedPiBin,
+    ["--offline", "-p", "ping", "--provider", "openai-codex", "--model", "gpt-5.5",
+     "--no-session", "--session-dir", join(tmp, "sessions")],
+    { env: { PATH: process.env.PATH ?? "", HOME: tmp, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1" }, timeout: 90_000 },
+  );
+  const nestedOutput = `${nestedBoot.stdout}\n${nestedBoot.stderr}`;
+  if (!LOAD_ERROR_RE.test(nestedOutput) && /No API key found|authentication|api key|401/i.test(nestedOutput)) {
+    ok("pi loaded pinned nested engines without extension errors");
+  } else {
+    fail(`nested pi boot failed:\n${nestedOutput.slice(0, 800)}`);
+  }
+  ok("exercising pinned engines with stale shared npm siblings");
+  const nestedGuard = run(
+    process.execPath,
+    ["--import=tsx", join(ROOT, "scripts", "smoke", "compaction-check.mts"), installed, agentDir],
+    { env: { ...process.env, HOME: tmp, PI_CODING_AGENT_DIR: agentDir }, timeout: 60_000 },
+  );
+  if (nestedGuard.status === 0) {
+    ok("nested Codex/Blackhole engines win over stale shared npm siblings");
+  } else {
+    fail(`nested compaction runtime check failed:\n${(nestedGuard.stderr || nestedGuard.stdout || "").slice(0, 800)}`);
   }
 } finally {
   rmSync(tmp, { recursive: true, force: true });

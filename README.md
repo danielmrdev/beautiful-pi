@@ -60,18 +60,27 @@ Then reload pi:
 
 ### Development (live-link workflow)
 
-`pi install .` copies the package into `~/.pi/agent/npm/node_modules/`;
-changes in the repo are not picked up until you reinstall. To edit and test
-iteratively, replace that copy with a symlink to the repo:
+`pi install .` may link the checkout into `~/.pi/agent/npm/node_modules/`.
+If it installed a copy instead, back it up before replacing it with a symlink:
 
 ```bash
 ln -s "$(pwd)" ~/.pi/agent/npm/node_modules/beautiful-pi
 ```
 
-(Back up the previous copy first if you want to restore it.)
+For a linked checkout, update its own dependencies after each pull:
 
-Then `/reload` — every repo change is live on the next reload, no reinstall
-needed. Run `npm run test` and `npx tsc --noEmit` before pushing.
+```bash
+pnpm install --frozen-lockfile
+```
+
+Then `/reload`. `pi update --extensions` alone can leave older copies of
+Codex compaction and Blackhole in Pi's shared npm directory. beautiful-pi
+loads those engines through package-local entry points, so a matching nested
+or checkout dependency wins; an outdated resolved version produces a
+`Compaction dependency version mismatch` load error instead of silently
+using the wrong engine. For a copied/npm install, reinstall or update the
+package to refresh its dependencies. Run `pnpm test` and `pnpm typecheck`
+before pushing.
 
 ### Built-in extensions
 
@@ -234,20 +243,18 @@ Use `pi auth --help` for the exact command surface.
 
 Codex native remote compaction is enabled only for `openai-codex` models. It
 uses the Codex Responses API, keeps its opaque checkpoint in Pi's native
-compaction entry, and fails closed if the remote request fails. Configure it
-separately from beautiful-pi settings:
+compaction entry, and fails closed if the remote request fails. On supported
+Pi versions (0.85–0.87), **Pi controls when** compaction runs: configure
+`compaction.reserveTokens` in `~/.pi/agent/settings.json` or project-local
+`.pi/settings.json`. Pi triggers when used tokens exceed
+`contextWindow - reserveTokens`; default reserve is 16,384 tokens. For a
+272k-token model, default trigger is near 94% used. To trigger near 30% used,
+set a model override with `reserveTokens: 190400` (70% of 272k).
 
-```json
-{
-  "autoCompact": true,
-  "thresholdRatio": 0.9
-}
-```
-
-Save this at `~/.pi/agent/pi-codex-compaction.json`; project-local
-`.pi/pi-codex-compaction.json` takes precedence. `compaction.reserveTokens` in
-Pi's `settings.json` still controls Pi's own threshold. Other providers use
-Pi's normal lifecycle.
+`~/.pi/agent/pi-codex-compaction.json` and project-local
+`.pi/pi-codex-compaction.json` (`autoCompact` / `thresholdRatio`) apply only to
+the upstream engine's fallback for Pi versions older than 0.84.4. Other
+providers follow Pi's normal lifecycle.
 
 `pi-blackhole@0.5.7` includes the provider-aware skip capability. Compaction
 engine selection is coordinated automatically:
@@ -268,10 +275,10 @@ remain available when Blackhole is loaded.
 
 | Path or command | Purpose |
 | --- | --- |
-| `~/.pi/agent/settings.json` | Pi settings and active theme |
+| `~/.pi/agent/settings.json` or `.pi/settings.json` | Pi settings, theme, and compaction threshold (`compaction.reserveTokens`) |
 | `~/.pi/agent/beautiful-pi.json` | beautiful-pi feature and rail overrides |
-| `~/.pi/agent/pi-codex-compaction.json` | Codex native compaction |
-| `.pi/pi-codex-compaction.json` | Project override for Codex compaction |
+| `~/.pi/agent/pi-codex-compaction.json` | Codex fallback config for Pi <0.84.4 only |
+| `.pi/pi-codex-compaction.json` | Project fallback config for Pi <0.84.4 only |
 | `~/.pi/agent/pi-blackhole/pi-blackhole-config.json` | Blackhole compaction and memory |
 | `/beautiful-pi` or `/bpi` | Open beautiful-pi settings TUI |
 | `/reload` | Reload package resources after config changes |
@@ -487,10 +494,12 @@ exercises the compaction coordination at runtime: the coordinator must write
 `skipForProviders` into the clean agent dir, and both installed engines are
 driven through real compaction events to prove one-engine-per-turn — native
 Codex compaction for Codex sessions (blackhole steps aside) and blackhole for
-other providers. The smoke test needs network access to the npm registry and
-`script` (util-linux) and `tsx` on the host; it requires no OAuth, Codex, or
-quota credentials — provider requests
-are not part of release verification.
+other providers. It repeats the check after moving the pinned engines to
+package-local `node_modules` and simulating stale versions in the shared npm
+directory, including a real Pi load. The smoke test needs network access to
+the npm registry plus `script` (util-linux) and `tsx` on the host; it requires
+no OAuth, Codex, or quota credentials — provider requests are not part of
+release verification.
 
 ```bash
 pnpm publish --access public  # requires npm account with 2FA
@@ -514,7 +523,9 @@ extensions/
 │   └── index.ts                # `/codex` accounts, pools, chains and failover
 ├── compaction/
 │   ├── index.ts                # Provider-aware compaction entry point
-│   └── coordinator.ts          # Codex/Blackhole engine coordination
+│   ├── coordinator.ts          # Codex/Blackhole engine coordination
+│   ├── codex-engine.ts         # Load pinned Codex compaction dependency
+│   └── blackhole-engine.ts     # Load pinned Blackhole dependency
 ├── herdr-pane-sync/
 │   └── index.ts                # Optional Herdr pane-label synchronisation
 ├── banner/
