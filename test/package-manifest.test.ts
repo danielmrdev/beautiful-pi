@@ -8,13 +8,13 @@ const { join, resolve } = require("node:path");
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
 
 const expectedDependencies = {
-  "@hypabolic/pi-hypa": "0.1.14",
-  "@juicesharp/rpiv-ask-user-question": "2.9.0",
+  "@hypabolic/pi-hypa": "0.1.15",
+  "@juicesharp/rpiv-ask-user-question": "2.11.0",
   "@juicesharp/rpiv-btw": "2.9.0",
   "@ogulcancelik/pi-codex-compaction": "0.1.5",
-  "@plannotator/pi-extension": "0.27.13",
+  "@plannotator/pi-extension": "0.27.20",
   "@tintinweb/pi-subagents": "0.19.0",
-  "pi-blackhole": "0.5.7",
+  "pi-blackhole": "0.5.8",
   "pi-rtk-optimizer": "0.9.0",
 };
 
@@ -54,7 +54,7 @@ test("compaction engines load through package-local entry points", () => {
   );
 });
 
-function withEngineLayout(nested: boolean, check: (load: NodeRequire) => void): void {
+async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => void | Promise<void>): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "bpi-engines-"));
   const pkg = join(root, "node_modules", "beautiful-pi");
   const engineDir = join(pkg, "extensions", "compaction");
@@ -62,41 +62,45 @@ function withEngineLayout(nested: boolean, check: (load: NodeRequire) => void): 
     mkdirSync(engineDir, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ dependencies: {
       "@ogulcancelik/pi-codex-compaction": "0.1.5",
-      "pi-blackhole": "0.5.7",
+      "pi-blackhole": "0.5.8",
     } }));
     for (const [name, entry, oldVersion, version] of [
       ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.5"],
-      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.7"],
+      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.8"],
     ]) {
       const packages = [[join(root, "node_modules", name), oldVersion]];
       if (nested) packages.push([join(pkg, "node_modules", name), version]);
       for (const [dir, installed] of packages) {
         mkdirSync(join(dir, "dist"), { recursive: true });
         writeFileSync(join(dir, "package.json"), JSON.stringify({ version: installed, main: "./dist/index.js" }));
-        writeFileSync(join(dir, entry), `module.exports = { default: () => ${JSON.stringify(installed)} };\n`);
+        writeFileSync(join(dir, entry), `module.exports = { default: (pi) => { pi.loadedVersion = ${JSON.stringify(installed)}; return ${JSON.stringify(installed)}; } };\n`);
       }
     }
     for (const engine of ["codex-engine", "blackhole-engine"]) {
       copyFileSync(resolve(__dirname, `../extensions/compaction/${engine}.ts`), join(engineDir, `${engine}.ts`));
     }
-    check(createRequire(join(engineDir, "test.js")));
+    await check(createRequire(join(engineDir, "test.js")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
-test("compaction engines reject stale shared dependencies", () => {
-  withEngineLayout(false, (load) => {
+test("compaction engines reject stale shared dependencies", async () => {
+  await withEngineLayout(false, (load) => {
     for (const engine of ["codex-engine", "blackhole-engine"]) {
       assert.throws(() => load(`./${engine}.ts`), /Compaction dependency version mismatch/);
     }
   });
 });
 
-test("compaction engines prefer pinned nested dependencies over stale siblings", () => {
-  withEngineLayout(true, (load) => {
-    assert.equal(load("./codex-engine.ts").default(), "0.1.5");
-    assert.equal(load("./blackhole-engine.ts").default(), "0.5.7");
+test("compaction engines prefer pinned nested dependencies over stale siblings", async () => {
+  await withEngineLayout(true, async (load) => {
+    const pi: any = { on() {} };
+    load("./codex-engine.ts").default(pi);
+    assert.equal(pi.loadedVersion, "0.1.5");
+    delete pi.loadedVersion;
+    await load("./blackhole-engine.ts").default(pi);
+    assert.equal(pi.loadedVersion, "0.5.8");
   });
 });
 

@@ -38,6 +38,7 @@ import compactionCoordinator, {
 } from "./coordinator.ts";
 import {
   CODEX_MODEL,
+  CODEX_ACCOUNT_MODEL,
   NON_CODEX_MODEL,
   branchWith,
   makeCtx,
@@ -107,12 +108,26 @@ async function compactOnce(
   pi: FakePi,
   model: unknown,
   branch: unknown[],
+  options: Parameters<typeof makeCtx>[2] = {},
 ): Promise<CompactResult | undefined> {
   return (await pi.events.emitWithResult(
     "session_before_compact",
     makeEvent(branch),
-    makeCtx(model, branch),
+    makeCtx(model, branch, options),
   )) as CompactResult | undefined;
+}
+
+async function prepareProviderRequest(
+  pi: FakePi,
+  model: unknown,
+  branch: unknown[],
+  onAbort?: () => void,
+): Promise<any> {
+  return pi.events.emitWithResult(
+    "before_provider_request",
+    { payload: { model: "gpt-5.5", input: [{ type: "message", role: "user", content: "new turn" }] } },
+    makeCtx(model, branch, { onAbort }),
+  );
 }
 
 describe("/codex compaction coordination", () => {
@@ -177,6 +192,120 @@ describe("/codex compaction coordination", () => {
       false,
       "Codex compaction config stays separate and untouched",
     );
+  });
+
+  test("managed Codex account → native Codex compaction; blackhole steps aside", async () => {
+    const requestBodies: any[] = [];
+    stubCodexCompactionSuccess((body) => requestBodies.push(body));
+    ensureBlackholeSkipConfig();
+    const pi = await wireEngines("codex-first");
+    const branch = branchWith(8);
+    branch.push({
+      type: "message",
+      id: "account-tool-call",
+      parentId: "m7",
+      timestamp: new Date().toISOString(),
+      message: {
+        role: "assistant",
+        provider: "openai-codex-2",
+        api: "openai-codex-responses",
+        content: [{ type: "toolCall", id: "call-1|item-1", name: "bash", arguments: { command: "true" } }],
+      },
+    });
+    const authModels: unknown[] = [];
+    const result = await compactOnce(pi, CODEX_ACCOUNT_MODEL, branch, { authModels });
+    assert.equal(
+      result?.compaction?.details?.kind,
+      NATIVE_COMPACTION_KIND,
+      "suffixed Codex account must use native OpenAI compaction",
+    );
+    assert.equal(
+      result?.compaction?.details?.["om.folded"],
+      undefined,
+      "blackhole must skip observational-memory consolidation for managed Codex accounts",
+    );
+    assert.equal(
+      result?.compaction?.details?.modelKey,
+      "openai-codex-2:openai-codex-responses:gpt-5.5",
+      "native checkpoint stays bound to managed account provider",
+    );
+    assert.equal(
+      (authModels[0] as { provider?: string })?.provider,
+      "openai-codex-2",
+      "native compaction uses selected account credentials",
+    );
+    assert.ok(
+      requestBodies[0]?.input?.some((item: any) => item.type === "function_call" && item.id === "fc_item-1"),
+      "same-account provider metadata preserves opaque Codex tool-call ids",
+    );
+  });
+
+  test("managed Codex checkpoint replays for same account and blocks account switches", async () => {
+    stubCodexCompactionSuccess();
+    ensureBlackholeSkipConfig();
+    const pi = await wireEngines("blackhole-first");
+    const branch = branchWith(8);
+    const result = await compactOnce(pi, CODEX_ACCOUNT_MODEL, branch);
+    assert.ok(result?.compaction?.details);
+
+    branch.push({
+      type: "compaction",
+      id: "checkpoint-entry",
+      parentId: "m7",
+      timestamp: new Date().toISOString(),
+      summary: result.compaction.summary,
+      firstKeptEntryId: result.compaction.firstKeptEntryId,
+      details: result.compaction.details,
+    });
+
+    const replay = await prepareProviderRequest(pi, CODEX_ACCOUNT_MODEL, branch);
+    assert.ok(
+      replay?.input?.some((item: any) => item.type === "compaction" && item.encrypted_content === "opaque-checkpoint"),
+      "same account receives opaque native checkpoint on its next request",
+    );
+    const secondCompaction = await compactOnce(pi, CODEX_ACCOUNT_MODEL, branch);
+    assert.equal(
+      secondCompaction?.compaction?.details?.modelKey,
+      "openai-codex-2:openai-codex-responses:gpt-5.5",
+      "repeated compaction retains account-specific checkpoint identity",
+    );
+
+    let aborted = false;
+    const switched = await prepareProviderRequest(
+      pi,
+      { ...CODEX_ACCOUNT_MODEL, provider: "openai-codex-3" },
+      branch,
+      () => { aborted = true; },
+    );
+    assert.equal(aborted, true, "switching managed accounts aborts replay of another account's checkpoint");
+    assert.deepEqual(switched?.input, [], "mismatched checkpoint is not sent to another account");
+
+    const baseCheckpointBranch = [
+      ...branchWith(2),
+      {
+        type: "compaction",
+        id: "base-checkpoint-entry",
+        parentId: "m1",
+        timestamp: new Date().toISOString(),
+        summary: "base account",
+        firstKeptEntryId: "m0",
+        details: {
+          kind: NATIVE_COMPACTION_KIND,
+          version: 1,
+          modelKey: "openai-codex:openai-codex-responses:gpt-5.5",
+          replacementHistory: [{ type: "compaction", id: "base-cmp", encrypted_content: "base-account-secret" }],
+        },
+      },
+    ];
+    let baseAborted = false;
+    const baseReplay = await prepareProviderRequest(
+      pi,
+      CODEX_ACCOUNT_MODEL,
+      baseCheckpointBranch,
+      () => { baseAborted = true; },
+    );
+    assert.equal(baseAborted, true, "base-provider checkpoints cannot cross into a managed account");
+    assert.deepEqual(baseReplay?.input, [], "base-account opaque checkpoint is never sent to managed account");
   });
 
   test("registration order does not change the Codex selection", async () => {

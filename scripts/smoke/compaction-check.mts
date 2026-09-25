@@ -6,9 +6,9 @@
  * from the freshly installed package tree, through pi's
  * `session_before_compact` runner semantics (last-writer-wins with a cancel
  * short-circuit) and asserts the observable provider-aware selection:
- *   - OpenAI Codex model → native Codex compaction wins, blackhole steps
- *     aside (its provider-skip guard fires — if it did not, blackhole's own
- *     compaction would replace the native result via last-wins)
+ *   - OpenAI Codex models, including managed account ids → native Codex
+ *     compaction wins, blackhole steps aside (its provider-skip guard fires —
+ *     if it did not, blackhole's own compaction would replace via last-wins)
  *   - non-Codex model → blackhole compacts (guard did not over-skip)
  *   - coordinator's session_start wiring writes the skip config at runtime
  *
@@ -68,6 +68,7 @@ interface CompactResult {
     details?: {
       compactor?: string;
       kind?: string;
+      modelKey?: string;
       "om.folded"?: unknown;
     };
   };
@@ -90,6 +91,7 @@ async function main(): Promise<number> {
   const { NATIVE_COMPACTION_KIND } = nativeCompaction as { NATIVE_COMPACTION_KIND: string };
   const {
     CODEX_MODEL,
+    CODEX_ACCOUNT_MODEL,
     NON_CODEX_MODEL,
     branchWith,
     makeCtx,
@@ -97,6 +99,7 @@ async function main(): Promise<number> {
     stubCodexCompactionSuccess,
   } = fixtures as {
     CODEX_MODEL: unknown;
+    CODEX_ACCOUNT_MODEL: unknown;
     NON_CODEX_MODEL: unknown;
     branchWith: (n: number) => unknown[];
     makeCtx: (model: unknown, branch: unknown[]) => Record<string, unknown>;
@@ -156,6 +159,24 @@ async function main(): Promise<number> {
       "blackhole ran no observational-memory content on a Codex session",
     );
     console.log("✓ one-engine-per-turn at runtime: Codex session → native compaction, blackhole skips");
+
+    const managedBranch = branchWith(8);
+    const managedResult = (await pi.events.emitWithResult(
+      "session_before_compact",
+      makeEvent(managedBranch),
+      makeCtx(CODEX_ACCOUNT_MODEL, managedBranch),
+    )) as CompactResult | undefined;
+    assert.equal(
+      managedResult?.compaction?.details?.kind,
+      NATIVE_COMPACTION_KIND,
+      "managed Codex session uses native compaction",
+    );
+    assert.equal(
+      managedResult?.compaction?.details?.modelKey,
+      "openai-codex-2:openai-codex-responses:gpt-5.5",
+      "managed checkpoint keeps account identity",
+    );
+    console.log("✓ installed runtime: managed Codex account → native compaction with scoped checkpoint");
 
     // Non-Codex session → blackhole compacts (guard did not over-skip).
     const nonCodexBranch = branchWith(8);

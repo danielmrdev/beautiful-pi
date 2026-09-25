@@ -32,13 +32,12 @@
  *      with no extension load errors and the passed model visible, and the
  *      compaction coordinator's session_start hook must write
  *      skipForProviders into the clean agent dir at runtime.
- *   6. Exercise the compaction coordination at runtime against the installed
- *      artifacts: drive BOTH engines (pi-codex-compaction + pi-blackhole)
- *      through real session_before_compact events and assert
- *      one-engine-per-turn (openai-codex → native compaction, blackhole
- *      steps aside; non-Codex → blackhole compacts).
- *   7. Simulate stale shared compaction packages alongside pinned nested
- *      dependencies and repeat the runtime compaction check.
+ *   6. Drive the actual Pi `/compact` command with synthetic Codex OAuth and
+ *      stubbed fetch; assert the native hook reaches its remote request.
+ *   7. Exercise the compaction coordination against installed artifacts:
+ *      base/managed Codex → native compaction, non-Codex → Blackhole.
+ *   8. Simulate stale shared compaction packages alongside pinned nested
+ *      dependencies and repeat the runtime coordination check.
  *
  * Requires network (npm registry), a PTY runner (`script` from util-linux),
  * and tsx. Run with `pnpm smoke`. Not part
@@ -133,6 +132,63 @@ async function bootTuiPi(piBin, args, { env, cwd, timeoutMs = 60_000 }) {
     child.stderr.on("data", (d) => {
       output += d.toString("utf8");
     });
+    child.on("error", (err) => finish({ ok: false, error: err.message }));
+    child.on("exit", (code, signal) => finish({ ok: false, exitCode: code, signal }));
+  });
+}
+
+async function exerciseManualCompact(piBin, args, { env, cwd, fetchMarker, settleMarker, timeoutMs = 60_000 }) {
+  const cmd = [piBin, ...args].map(shellQuote).join(" ");
+  return new Promise((resolve) => {
+    let output = "";
+    let finished = false;
+    let inputStep = 0;
+    let bannerSeenAt = 0;
+    let lastInputAt = 0;
+    let compactSentAt = 0;
+    let child;
+    function finish(result) {
+      if (finished) return;
+      finished = true;
+      clearInterval(poll);
+      clearTimeout(deadline);
+      if (child?.pid) {
+        try { process.kill(-child.pid, "SIGKILL"); } catch { /* process group exited */ }
+      }
+      resolve({ ...result, output });
+    }
+    const poll = setInterval(() => {
+      const visible = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+      if ((TUI_ESCAPE_RE.test(output) || TUI_BANNER_RE.test(visible)) && bannerSeenAt === 0) bannerSeenAt = Date.now();
+      const settledCount = (existsSync(settleMarker) ? readFileSync(settleMarker, "utf8").split("\n").filter((l) => l === "settled").length : 0);
+      if (bannerSeenAt > 0 && Date.now() - bannerSeenAt > 1500) {
+        if (inputStep === 0) {
+          child?.stdin?.write("seed first Codex context\r");
+          inputStep = 1;
+          lastInputAt = Date.now();
+        } else if (inputStep === 1 && settledCount >= 1) {
+          child?.stdin?.write("seed second Codex context\r");
+          inputStep = 2;
+          lastInputAt = Date.now();
+        } else if (inputStep === 2 && settledCount >= 2) {
+          child?.stdin?.write("/compact\r");
+          inputStep = 3;
+          compactSentAt = Date.now();
+        }
+      }
+      if (inputStep === 3 && existsSync(fetchMarker) && Date.now() - compactSentAt > 3000) {
+        finish({ ok: true, reachedNativeHook: true });
+      }
+    }, 100);
+    const deadline = setTimeout(() => finish({ ok: false, timedOut: true }), timeoutMs);
+    child = spawn("script", ["-qec", cmd, "/dev/null"], {
+      detached: true,
+      env,
+      cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    child.stdout.on("data", (d) => { output += d.toString("utf8"); });
+    child.stderr.on("data", (d) => { output += d.toString("utf8"); });
     child.on("error", (err) => finish({ ok: false, error: err.message }));
     child.on("exit", (code, signal) => finish({ ok: false, exitCode: code, signal }));
   });
@@ -316,6 +372,75 @@ try {
     ok("provider/model selection rendered in the TUI (banner/footer show gpt-5.5)");
   } else {
     fail("passed model did not render in the TUI — provider/model selection broken");
+  }
+
+  // Pi fetches summarization auth before emitting session_before_compact.
+  // Give the disposable test agent synthetic OAuth data and stub fetch inside
+  // its process, so the real /compact route runs without user credentials or
+  // network access. Managed-provider routing is asserted by the hook tests.
+  const manualSettingsPath = join(agentDir, "settings.json");
+  const manualSettings = JSON.parse(readFileSync(manualSettingsPath, "utf8"));
+  manualSettings.compaction = { ...manualSettings.compaction, keepRecentTokens: 0 };
+  writeFileSync(manualSettingsPath, JSON.stringify(manualSettings));
+  const fakeToken = `h.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-smoke" } })).toString("base64url")}.sig`;
+  writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
+    "openai-codex": { type: "oauth", access: fakeToken, refresh: "unused-smoke-token", expires: Date.now() + 3_600_000 },
+  }));
+  const managedSmokeExtension = join(installed, "extensions", "compaction", "manual-compact-smoke.ts");
+  const hookMarker = join(tmp, "manual-compact-hook.txt");
+  const fetchMarker = join(tmp, "manual-compact-fetch.txt");
+  const settleMarker = join(tmp, "manual-compact-settle.txt");
+  writeFileSync(managedSmokeExtension, `import { appendFileSync, writeFileSync } from "node:fs";
+export default function (pi) {
+  globalThis.fetch = async (url) => {
+    if (!String(url).includes("/codex/responses")) return new Response("offline smoke stub", { status: 400 });
+    writeFileSync(process.env.BPI_MANUAL_COMPACT_FETCH_MARKER, String(url));
+    const sse = [
+      'data: {"type":"response.output_item.done","item":{"type":"compaction","id":"cmp-smoke","encrypted_content":"opaque-smoke"}}',
+      '',
+      'data: {"type":"response.completed","response":{"usage":{"output_tokens":1}}}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join("\\n");
+    return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  pi.on("agent_end", () => {
+    try { appendFileSync(process.env.BPI_MANUAL_COMPACT_SETTLE_MARKER, "settled\\n"); } catch {}
+  });
+  pi.on("session_before_compact", (_event, ctx) => {
+    writeFileSync(process.env.BPI_MANUAL_COMPACT_HOOK_MARKER, JSON.stringify({ provider: ctx.model.provider, api: ctx.model.api, id: ctx.model.id }));
+  });
+}
+`);
+  ok("running real Pi /compact with synthetic Codex auth (fetch stubbed)");
+  const manualCompact = await exerciseManualCompact(
+    installedPiBin,
+    ["--approve", "--provider", "openai-codex", "--model", "gpt-5.5", "--extension", managedSmokeExtension,
+     "--session-dir", join(tmp, "manual-sessions"), "--session-id", "manual-compact"],
+    {
+      env: {
+        ...process.env,
+        HOME: tmp,
+        PI_CODING_AGENT_DIR: agentDir,
+        PI_OFFLINE: "1",
+        BPI_MANUAL_COMPACT_HOOK_MARKER: hookMarker,
+        BPI_MANUAL_COMPACT_FETCH_MARKER: fetchMarker,
+        BPI_MANUAL_COMPACT_SETTLE_MARKER: settleMarker,
+      },
+      cwd: projectDir,
+      fetchMarker,
+      settleMarker,
+    },
+  );
+  const hookDetails = existsSync(hookMarker) ? JSON.parse(readFileSync(hookMarker, "utf8")) : undefined;
+  if (manualCompact.ok && hookDetails?.provider === "openai-codex" && hookDetails?.api === "openai-codex-responses" && existsSync(fetchMarker)) {
+    ok("real /compact reached the native Codex hook; fake remote checkpoint returned offline");
+  } else {
+    fail(`real Codex /compact failed (model=${JSON.stringify(hookDetails ?? null)}, fetch=${existsSync(fetchMarker)}):\n${manualCompact.output.slice(-1200)}`);
+  }
+  if (LOAD_ERROR_RE.test(manualCompact.output)) {
+    fail(`extension load errors during manual /compact:\n${manualCompact.output.slice(-800)}`);
   }
 
   // The compaction coordinator's session_start hook must have written the

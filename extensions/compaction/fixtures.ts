@@ -24,6 +24,7 @@ export const CODEX_MODEL = {
   cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
+export const CODEX_ACCOUNT_MODEL = { ...CODEX_MODEL, provider: "openai-codex-2" };
 export const NON_CODEX_MODEL = { provider: "anthropic", api: "completions", id: "claude" };
 
 export function message(id: string, role: string, content = "x"): unknown {
@@ -38,14 +39,21 @@ export function branchWith(n: number): unknown[] {
   return out;
 }
 
-export function makeCtx(model: unknown, branch: unknown[]): Record<string, unknown> {
+export function makeCtx(
+  model: unknown,
+  branch: unknown[],
+  options: { authModels?: unknown[]; onAbort?: () => void } = {},
+): Record<string, unknown> {
   return {
     mode: "print",
     cwd: "/tmp/proj",
     hasUI: false,
     model,
     modelRegistry: {
-      getApiKeyAndHeaders: async () => ({ ok: true, apiKey: codexToken(), headers: {} }),
+      getApiKeyAndHeaders: async (requestedModel: unknown) => {
+        options.authModels?.push(requestedModel);
+        return { ok: true, apiKey: codexToken(), headers: {} };
+      },
       getAll: () => [],
       getProviderAuthStatus: () => ({ configured: true }),
       hasConfiguredAuth: () => true,
@@ -53,7 +61,7 @@ export function makeCtx(model: unknown, branch: unknown[]): Record<string, unkno
     },
     sessionManager: { getSessionId: () => "s1", getBranch: () => branch },
     getSystemPrompt: () => "System prompt",
-    abort: () => {},
+    abort: () => options.onAbort?.(),
   };
 }
 
@@ -74,8 +82,9 @@ export function makeEvent(branch: unknown[]): Record<string, unknown> {
   };
 }
 
-export function stubCodexCompactionSuccess(): void {
-  globalThis.fetch = (async () => {
+export function stubCodexCompactionSuccess(onRequestBody?: (body: unknown) => void): void {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof init?.body === "string") onRequestBody?.(JSON.parse(init.body));
     const sse = [
       'data: {"type":"response.output_item.done","item":{"type":"compaction","id":"cmp-1","encrypted_content":"opaque-checkpoint"}}',
       "",

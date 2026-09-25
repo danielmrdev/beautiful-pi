@@ -7,13 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-25
+
+### Changed
+
+- Updated `pi-blackhole` to 0.5.8, `@hypabolic/pi-hypa` to 0.1.15,
+  `@plannotator/pi-extension` to 0.27.20, and
+  `@juicesharp/rpiv-ask-user-question` to 2.11.0.
+- Documented the Pi 0.87 `/mention-clone` history limitation in
+  `@tintinweb/pi-subagents` 0.19.0.
+- Document Pi's active `reserveTokens` compaction threshold and linked-checkout
+  dependency updates.
+
 ### Fixed
 
+- Route managed Codex accounts (`openai-codex-N`) through native OpenAI
+  compaction while preserving account-specific credentials and checkpoints;
+  block replay across accounts.
 - Load Codex compaction and Blackhole from beautiful-pi's pinned dependencies,
   not stale shared npm siblings; reject mismatched versions instead of silently
   using the wrong engine.
-- Document Pi's active `reserveTokens` compaction threshold and linked-checkout
-  dependency updates.
 
 ## [0.1.4] — 2026-09-23
 
