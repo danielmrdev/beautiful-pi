@@ -1,6 +1,6 @@
 {
   "name": "beautiful-pi",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Beautiful UI extensions for pi \u2014 footer, banner, and Nerd Fonts support",
   "keywords": [
     "pi-package",

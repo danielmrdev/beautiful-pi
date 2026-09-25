@@ -170,10 +170,10 @@ export function formatReset(window: UsageWindow, now = Date.now()): string {
 }
 
 export const USAGE_PACE_BAR_WIDTH = 12;
-export const USAGE_PACE_MARKER = "◆";
+export const USAGE_PACE_MARKER = "·";
+export const USAGE_PACE_USED = "━";
 
-const USAGE_PACE_USED = "━";
-const USAGE_PACE_REMAINING = "─";
+const USAGE_PACE_REMAINING = "┄";
 
 /** Render actual usage against the linear budget available at this moment. */
 export function formatUsagePaceBar(

@@ -55,10 +55,10 @@ describe("OpenAI Codex usage", () => {
 	});
 
 	test("renders pace bar with ideal limit ahead of actual usage", () => {
-		assert.equal(formatUsagePaceBar(30, 60, 100), "━━━━───◆────");
+		assert.equal(formatUsagePaceBar(30, 60, 100), "━━━━┄┄┄·┄┄┄┄");
 	});
 
 	test("renders actual usage crossing ideal limit", () => {
-		assert.equal(formatUsagePaceBar(70, 30, 100), "━━━━◆━━━────");
+		assert.equal(formatUsagePaceBar(70, 30, 100), "━━━━·━━━┄┄┄┄");
 	});
 });

@@ -4,7 +4,7 @@ import {
 	type UsageSegment,
 } from "../shared/openai-usage.ts";
 
-const DASHBOARD_BASE = "https://opencode.ai/workspace";
+const USAGE_URL = "https://opencode.ai/zen/go/v1/usage";
 
 export interface OpenCodeGoWindow {
 	usagePercent: number;
@@ -17,67 +17,34 @@ export interface OpenCodeGoUsage {
 	monthly: OpenCodeGoWindow;  // 30d, $60 limit
 }
 
-// ── HTML scraping ────────────────────────────────────────────────────────────
+// ── API parsing ──────────────────────────────────────────────────────────────
 
-const ENTITY_REPLACEMENTS: Array<[RegExp, string]> = [
-	[/&quot;/g, '"'],
-	[/&#34;/g, '"'],
-	[/&#x27;/g, "'"],
-	[/&#39;/g, "'"],
-	[/&amp;/g, '&'],
-	[/\\"/g, '"'],
-	[/\\u0022/g, '"'],
-];
+function parseWindow(value: unknown, now: number): OpenCodeGoWindow | null {
+	if (!value || typeof value !== "object") return null;
+	const raw = value as Record<string, unknown>;
 
-function normalizeHTML(html: string): string {
-	let text = html;
-	for (const [pattern, replacement] of ENTITY_REPLACEMENTS) {
-		text = text.replace(pattern, replacement);
-	}
-	return text;
-}
+	const percent = raw.percent;
+	if (typeof percent !== "number" || !Number.isFinite(percent)) return null;
+	if (percent < 0 || percent > 100) return null;
 
-function escapeRegex(str: string): string {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function extractNumber(text: string, fieldName: string): number | null {
-	const pattern = new RegExp(
-		`["']?${escapeRegex(fieldName)}["']?\\s*:\\s*"?(-?\\d+(?:\\.\\d+)?)"?`,
-	);
-	const match = text.match(pattern);
-	if (!match) return null;
-	const val = parseFloat(match[1]!);
-	return isNaN(val) ? null : val;
-}
-
-function extractUsageWindow(text: string, fieldName: string): OpenCodeGoWindow | null {
-	const objectPattern = new RegExp(
-		`["']?${escapeRegex(fieldName)}["']?\\s*:\\s*(?:\\$R\\[\\d+\\]\\s*=\\s*)?\\{([^}]*)\\}`,
-		"s",
-	);
-	const match = text.match(objectPattern);
-	if (!match) return null;
-
-	const body = match[1]!;
-	const usagePercent = extractNumber(body, "usagePercent");
-	const resetInSec = extractNumber(body, "resetInSec");
-
-	if (usagePercent === null || resetInSec === null) return null;
-	if (usagePercent < 0 || usagePercent > 100) return null;
+	const resetAt = typeof raw.resetsAt === "string" ? Date.parse(raw.resetsAt) : NaN;
+	if (!Number.isFinite(resetAt)) return null;
 
 	return {
-		usagePercent,
-		resetInSec: Math.max(0, Math.round(resetInSec)),
+		usagePercent: percent,
+		resetInSec: Math.max(0, Math.round((resetAt - now) / 1000)),
 	};
 }
 
-function parseDashboardHTML(html: string): OpenCodeGoUsage | null {
-	const text = normalizeHTML(html);
+/** Parse `/zen/go/v1/usage` without trusting its schema blindly. */
+export function parseOpenCodeGoUsage(body: unknown, now = Date.now()): OpenCodeGoUsage | null {
+	const usage = (body as { usage?: unknown } | null)?.usage;
+	if (!usage || typeof usage !== "object") return null;
+	const windows = usage as Record<string, unknown>;
 
-	const rolling = extractUsageWindow(text, "rollingUsage");
-	const weekly = extractUsageWindow(text, "weeklyUsage");
-	const monthly = extractUsageWindow(text, "monthlyUsage");
+	const rolling = parseWindow(windows.rolling, now);
+	const weekly = parseWindow(windows.weekly, now);
+	const monthly = parseWindow(windows.monthly, now);
 
 	if (!rolling && !weekly && !monthly) return null;
 
@@ -88,50 +55,36 @@ function parseDashboardHTML(html: string): OpenCodeGoUsage | null {
 	};
 }
 
-// ── Fetch ─────────────────────────────────────────────────────────────────────
+// ── Fetch ────────────────────────────────────────────────────────────────────
 
-export async function fetchOpenCodeGoUsage(
-	workspaceId: string,
-	authCookie: string,
-	signal?: AbortSignal,
-): Promise<OpenCodeGoUsage | null> {
-	if (!workspaceId || !authCookie) return null;
-
-	const url = `${DASHBOARD_BASE}/${encodeURIComponent(workspaceId)}/go`;
-	const cookieHeader = authCookie.includes("auth=") ? authCookie : `auth=${authCookie}`;
+export async function fetchOpenCodeGoUsage(apiKey: string): Promise<OpenCodeGoUsage | null> {
+	if (!apiKey) return null;
 
 	const controller = new AbortController();
-	const linkedSignal = signal
-		? (() => {
-				if (signal.aborted) {
-					controller.abort();
-					return signal;
-				}
-				signal.addEventListener("abort", () => controller.abort(), { once: true });
-				return controller.signal;
-			})()
-		: controller.signal;
-	const timeoutId = signal ? undefined : setTimeout(() => controller.abort(), 10_000);
+	const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
 	try {
-		const response = await fetch(url, {
+		const response = await fetch(USAGE_URL, {
 			method: "GET",
 			headers: {
-				Accept: "text/html,application/xhtml+xml",
-				Cookie: cookieHeader,
-				"User-Agent":
-					"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+				Accept: "application/json",
+				Authorization: `Bearer ${apiKey}`,
 			},
-			signal: linkedSignal,
+			signal: controller.signal,
 		});
 
 		if (!response.ok) return null;
-		const html = await response.text();
-		return parseDashboardHTML(html);
+		let body: unknown;
+		try {
+			body = await response.json();
+		} catch {
+			return null;
+		}
+		return parseOpenCodeGoUsage(body);
 	} catch {
 		return null;
 	} finally {
-		if (timeoutId) clearTimeout(timeoutId);
+		clearTimeout(timeoutId);
 	}
 }
 

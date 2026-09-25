@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { SettingItem } from "@earendil-works/pi-tui";
-import { SettingsList, truncateToWidth, visibleWidth, Input, matchesKey } from "@earendil-works/pi-tui";
+import { SettingsList, truncateToWidth, visibleWidth, matchesKey } from "@earendil-works/pi-tui";
 import {
   loadSettings,
   saveSettings,
@@ -55,33 +55,7 @@ function buildTabs(s: BeautifulPiSettings): TabDef[] {
         { id: "dimCustomMessages",      label: "Dim custom messages",    currentValue: b(s.dimCustomMessages),   values: ON_OFF },
       ],
     },
-    {
-      label: "Credentials",
-      items: [
-        { id: "opencodeGoWorkspaceId", label: "OCGo workspace ID", currentValue: s.opencodeGoWorkspaceId ?? "(not set)", submenu: textSubmenu(() => s.opencodeGoWorkspaceId ?? "", "wrk_... from opencode.ai URL") },
-        { id: "opencodeGoAuthCookie",  label: "OCGo auth cookie",  currentValue: s.opencodeGoAuthCookie ? "****" : "(not set)",       submenu: textSubmenu(() => s.opencodeGoAuthCookie ?? "", "auth cookie from opencode.ai") },
-      ],
-    },
   ];
-}
-
-function textSubmenu(getValue: () => string, description: string) {
-  return (_currentValue: string, done: (selectedValue?: string) => void) => {
-    const input = new Input();
-    input.setValue(getValue());
-    input.focused = true;
-    input.onSubmit = (v) => { input.focused = false; done(v); };
-    input.onEscape = () => { input.focused = false; done(undefined); };
-    return {
-      render(width: number): string[] {
-        const descLine = `  \x1b[2m${description}\x1b[22m`;
-        const inputLines = input.render(width);
-        return [descLine, ...inputLines];
-      },
-      invalidate() {},
-      handleInput(data: string): void { input.handleInput(data); },
-    };
-  };
 }
 
 function applyChange(current: BeautifulPiSettings, id: string, value: string): void {
@@ -101,8 +75,6 @@ function applyChange(current: BeautifulPiSettings, id: string, value: string): v
     case "dimToolsText":           current.dimToolsText           = value === "on"; break;
     case "customMessageRailColor": current.customMessageRailColor = value; break;
     case "dimCustomMessages":      current.dimCustomMessages      = value === "on"; break;
-    case "opencodeGoWorkspaceId":   current.opencodeGoWorkspaceId   = value; break;
-    case "opencodeGoAuthCookie":    current.opencodeGoAuthCookie    = value; break;
   }
 }
 

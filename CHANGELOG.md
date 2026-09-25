@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-25
+
+### Changed
+
+- Usage pace bars now mirror the context indicator: `┄` dim track, `━` consumed
+  cells in accent (warning over pace, error when exhausted), and a small `·`
+  (accent) for the ideal linear limit.
+
+### Fixed
+
+- Fetch OpenCode Go usage from the Zen `/zen/go/v1/usage` API with the provider
+  key configured in pi. The previous opencode.ai dashboard scrape broke when
+  the console moved to a client-rendered SPA.
+- Drop the unused `opencodeGoWorkspaceId` and `opencodeGoAuthCookie` settings
+  and the settings TUI Credentials tab.
+
 ## [0.1.5] - 2026-09-25
 
 ### Changed

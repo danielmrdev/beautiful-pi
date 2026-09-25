@@ -36,8 +36,6 @@ export interface BeautifulPiSettings {
   showFooter: boolean;
   sessionTitle: boolean;
   syncHerdrPaneLabel: boolean;
-  opencodeGoWorkspaceId?: string;
-  opencodeGoAuthCookie?: string;
 }
 
 const DEFAULTS: BeautifulPiSettings = (() => {
@@ -113,14 +111,6 @@ export function saveSettings(settings: Partial<BeautifulPiSettings>): void {
       (toSave as any)[key] = (settings as any)[key];
     }
   }
-  // Persist optional credential keys (not in DEFAULTS)
-  if (settings.opencodeGoWorkspaceId) {
-    toSave.opencodeGoWorkspaceId = settings.opencodeGoWorkspaceId;
-  }
-  if (settings.opencodeGoAuthCookie) {
-    toSave.opencodeGoAuthCookie = settings.opencodeGoAuthCookie;
-  }
-
   // Preserve the `accounts` namespace owned by the codex-accounts store.
   let accounts: unknown;
   try {

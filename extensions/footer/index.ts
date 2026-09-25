@@ -26,6 +26,7 @@ import {
 	fetchOpenAIUsage,
 	openAIUsageSegments,
 	USAGE_PACE_MARKER,
+	USAGE_PACE_USED,
 	type OpenAIUsage,
 	type UsageSegment,
 } from "../shared/openai-usage.ts";
@@ -179,12 +180,25 @@ function renderUsageSegments(
 	return segments
 		.map((s) => {
 			if (mode === "pace") {
-				const color = s.exhausted ? "error" : s.overBudget ? "warning" : "muted";
-				const marker = s.paceBar.indexOf(USAGE_PACE_MARKER);
-				if (marker < 0) return theme.fg(color, s.paceBar);
-				return theme.fg(color, s.paceBar.slice(0, marker)) +
-					theme.fg("accent", USAGE_PACE_MARKER) +
-					theme.fg(color, s.paceBar.slice(marker + USAGE_PACE_MARKER.length));
+				// Consumed cells carry the accent (warning over pace, error when
+				// exhausted); the track stays dim and the linear-limit marker is accent,
+				// like the context indicator.
+				const usedColor = s.exhausted ? "error" : s.overBudget ? "warning" : "accent";
+				let out = "";
+				let run = "";
+				let runColor = "";
+				for (const ch of s.paceBar) {
+					const color =
+						ch === USAGE_PACE_MARKER ? "accent" : ch === USAGE_PACE_USED ? usedColor : "dim";
+					if (color !== runColor) {
+						if (run) out += theme.fg(runColor, run);
+						run = "";
+						runColor = color;
+					}
+					run += ch;
+				}
+				if (run) out += theme.fg(runColor, run);
+				return out;
 			}
 			return theme.fg(s.overBudget ? "warning" : "muted", s.text);
 		})
@@ -512,17 +526,10 @@ export default function (pi: ExtensionAPI) {
 				ocgLoading = true;
 				const generation = ++ocgGeneration;
 				try {
-					const settings = loadSettings();
-					const wsId = settings.opencodeGoWorkspaceId;
-					const cookie = settings.opencodeGoAuthCookie;
-					if (!wsId || !cookie) {
-						if (generation === ocgGeneration) {
-							openCodeGoUsage = null;
-							openCodeGoUsageFetchedAt = 0;
-						}
-						return;
-					}
-					const next = await fetchOpenCodeGoUsage(wsId, cookie);
+					const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+					const next = auth.ok && auth.apiKey
+						? await fetchOpenCodeGoUsage(auth.apiKey)
+						: null;
 					if (generation === ocgGeneration) {
 						openCodeGoUsage = next;
 						openCodeGoUsageFetchedAt = next ? Date.now() : 0;

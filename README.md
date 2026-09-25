@@ -331,12 +331,12 @@ Shows model, thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
 - OpenAI Codex rate-limit usage (5h + 7d windows) — shown when using an OpenAI
   Codex model
 - OpenCode Go subscription usage (5h, 7d, 30d tiers) — shown when using an
-  OpenCode Go model. Requires `opencodeGoWorkspaceId` + `opencodeGoAuthCookie`
-  in `beautiful-pi.json`
+  OpenCode Go model, fetched from the Zen `/zen/go/v1/usage` API with the
+  provider key already configured in pi
 - Usage pace view: press `Ctrl+Alt+U`, or click the usage segment in fullscreen
   TUI, to replace percentages/reset times with 12-cell pace bars. `━` marks
-  consumed quota, `─` remaining quota and `◆` the ideal linear limit for now.
-  Over-pace bars use warning colour; exhausted quotas use error colour.
+  consumed quota (accent; warning over pace, error when exhausted), `┄` the dim
+  remaining quota and `·` the ideal linear limit for now (accent).
 
 **Toggle:** `showFooter` setting (default: `on`).
 
