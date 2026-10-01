@@ -9,12 +9,12 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"
 
 const expectedDependencies = {
   "@hypabolic/pi-hypa": "0.1.15",
-  "@juicesharp/rpiv-ask-user-question": "2.11.0",
-  "@juicesharp/rpiv-btw": "2.9.0",
+  "@juicesharp/rpiv-ask-user-question": "2.12.0",
+  "@juicesharp/rpiv-btw": "2.12.0",
   "@ogulcancelik/pi-codex-compaction": "0.1.5",
-  "@plannotator/pi-extension": "0.27.20",
+  "@plannotator/pi-extension": "0.27.24",
   "@tintinweb/pi-subagents": "0.19.0",
-  "pi-blackhole": "0.5.8",
+  "pi-blackhole": "0.5.10",
   "pi-rtk-optimizer": "0.9.0",
 };
 
@@ -62,11 +62,11 @@ async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => v
     mkdirSync(engineDir, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ dependencies: {
       "@ogulcancelik/pi-codex-compaction": "0.1.5",
-      "pi-blackhole": "0.5.8",
+      "pi-blackhole": "0.5.10",
     } }));
     for (const [name, entry, oldVersion, version] of [
       ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.5"],
-      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.8"],
+      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.10"],
     ]) {
       const packages = [[join(root, "node_modules", name), oldVersion]];
       if (nested) packages.push([join(pkg, "node_modules", name), version]);
@@ -100,7 +100,7 @@ test("compaction engines prefer pinned nested dependencies over stale siblings",
     assert.equal(pi.loadedVersion, "0.1.5");
     delete pi.loadedVersion;
     await load("./blackhole-engine.ts").default(pi);
-    assert.equal(pi.loadedVersion, "0.5.8");
+    assert.equal(pi.loadedVersion, "0.5.10");
   });
 });
 

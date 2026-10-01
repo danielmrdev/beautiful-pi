@@ -13,5 +13,8 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-ai@0.80.10'
   - '@earendil-works/pi-coding-agent@0.80.10'
   - '@earendil-works/pi-tui@0.80.10'
-  - '@plannotator/pi-extension@0.27.20'
+  - '@plannotator/pi-extension@0.27.24'
   - pi-blackhole@0.5.8
+  - '@juicesharp/rpiv-ask-user-question@2.12.0'
+  - '@juicesharp/rpiv-btw@2.12.0'
+  - '@juicesharp/rpiv-config@2.12.0'

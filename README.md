@@ -1,6 +1,6 @@
 # Beautiful Pi
 
-Beautiful UI extensions for [pi](https://github.com/badlogic/pi-mono), the terminal coding agent.
+Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the terminal coding agent.
 
 <div align="center">
 
@@ -32,7 +32,7 @@ Beautiful UI extensions for [pi](https://github.com/badlogic/pi-mono), the termi
 
 ### Prerequisites
 
-- [pi](https://github.com/badlogic/pi-mono) `0.85.x–0.87.x` — install it globally
+- [pi](https://github.com/earendil-works/pi) `0.85.1–0.99.1` — install it globally. Pi `0.99.2` is not yet in the verified peer range.
 - A [Nerd Font](https://www.nerdfonts.com/) installed and configured in your
   terminal (recommended). The extensions degrade gracefully with ASCII fallbacks.
 
@@ -110,16 +110,16 @@ dependencies, pinned exactly in `package.json`:
 | Category | Bundled package | Version | Purpose | Repo |
 | --- | --- | ---: | --- | --- |
 | Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.5 | Native remote compaction for OpenAI Codex. | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
-| Compaction | `pi-blackhole` | 0.5.8 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
+| Compaction | `pi-blackhole` | 0.5.10 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
 | Context | `@hypabolic/pi-hypa` | 0.1.15 | Local compression for shell commands and tool output. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
 | Context | `pi-rtk-optimizer` | 0.9.0 | RTK command rewriting and tool-output compaction. | [repo](https://github.com/MasuRii/pi-rtk-optimizer) |
-| Workflows | `@plannotator/pi-extension` | 0.27.20 | Interactive plan and code/PR review. | [repo](https://github.com/backnotprop/plannotator) |
+| Workflows | `@plannotator/pi-extension` | 0.27.24 | Interactive plan and code/PR review. | [repo](https://github.com/backnotprop/plannotator) |
 | Workflows | `@tintinweb/pi-subagents` | 0.19.0 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.11.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.9.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.12.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.12.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
 
-Known Pi 0.87 limitation: `@tintinweb/pi-subagents@0.19.0` `/mention-clone`
-copies source history into `agent.state.messages`, while Pi 0.87 uses
+Known Pi 0.87+ limitation: `@tintinweb/pi-subagents@0.19.0` `/mention-clone`
+copies source history into `agent.state.messages`, while Pi uses
 `SessionManager` as canonical history. Cloned mentions may start without the
 source conversation. Other subagent workflows are not covered by this specific
 limitation.
@@ -128,13 +128,19 @@ The package also ships the Plannotator skill at
 `skills/plannotator/SKILL.md` and the `/btw` system prompt at
 `prompts/btw-system.txt`.
 
-`pi-blackhole@0.5.8` is the official release and includes the
+Plannotator 0.27.24 persists code-review viewed-file progress by default under
+`~/.plannotator/review-progress` (or `PLANNOTATOR_DATA_DIR`). Records include
+repo-relative paths in plain text and are not pruned. Disable persistence with
+`PLANNOTATOR_REVIEW_PROGRESS=0` or `{ "reviewProgress": false }` in
+`~/.plannotator/config.json`.
+
+`pi-blackhole@0.5.10` is the official release and includes the
 `skipForProviders` capability used to keep Codex and Blackhole compaction
-engines mutually exclusive, plus Pi 0.87 worker and compaction fixes. It also
-shows Blackhole's live `bh` status line by default; set
-`statusBar: false` in Blackhole config if b-pi's own footer should be the only
-status display. See [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for
-ownership and licenses.
+engines mutually exclusive, plus updated compaction and worker-stream fixes. It
+also shows Blackhole's live `bh` status line by default; set `statusBar: false`
+in Blackhole config if b-pi's own footer should be the only status display. See
+[`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) for ownership and
+licenses.
 
 ### Provider and compaction commands
 
@@ -253,7 +259,7 @@ account-specific checkpoint identity and credentials; switching accounts with
 a checkpoint from another account fails closed. Compaction uses the Codex
 Responses API, keeps its opaque checkpoint in Pi's native compaction entry,
 and fails closed if the remote request fails. On supported
-Pi versions (0.85–0.87), **Pi controls when** compaction runs: configure
+Pi versions (0.85.1–0.99.1), **Pi controls when** compaction runs: configure
 `compaction.reserveTokens` in `~/.pi/agent/settings.json` or project-local
 `.pi/settings.json`. Pi triggers when used tokens exceed
 `contextWindow - reserveTokens`; default reserve is 16,384 tokens. For a
@@ -265,7 +271,7 @@ set a model override with `reserveTokens: 190400` (70% of 272k).
 the upstream engine's fallback for Pi versions older than 0.84.4. Other
 providers follow Pi's normal lifecycle.
 
-`pi-blackhole@0.5.8` includes the provider-aware skip capability. Compaction
+`pi-blackhole@0.5.10` includes the provider-aware skip capability. Compaction
 engine selection is coordinated automatically:
 Codex models use native Codex compaction (opaque checkpoints preserved), every
 other model uses Blackhole, exactly one engine acts per turn, and the selection

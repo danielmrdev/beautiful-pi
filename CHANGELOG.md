@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-01
+
+### Changed
+
+- Extend Pi compatibility through 0.99.1; peer range is now
+  `>=0.85.1 <0.99.2`.
+- Update Plannotator to 0.27.24, ask-user-question and BTW to 2.12.0, and
+  Blackhole to 0.5.10.
+- Plannotator now persists viewed-file progress by default; disable it with
+  `PLANNOTATOR_REVIEW_PROGRESS=0` or `reviewProgress: false` in its config.
+
 ## [0.1.6] - 2026-09-25
 
 ### Changed

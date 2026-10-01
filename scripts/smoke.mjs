@@ -137,13 +137,13 @@ async function bootTuiPi(piBin, args, { env, cwd, timeoutMs = 60_000 }) {
   });
 }
 
-async function exerciseManualCompact(piBin, args, { env, cwd, fetchMarker, settleMarker, timeoutMs = 60_000 }) {
+async function exerciseManualCompact(piBin, args, { env, cwd, readyMarker, fetchMarker, settleMarker, timeoutMs = 60_000 }) {
   const cmd = [piBin, ...args].map(shellQuote).join(" ");
   return new Promise((resolve) => {
     let output = "";
     let finished = false;
     let inputStep = 0;
-    let bannerSeenAt = 0;
+    let readySeenAt = 0;
     let lastInputAt = 0;
     let compactSentAt = 0;
     let child;
@@ -158,10 +158,9 @@ async function exerciseManualCompact(piBin, args, { env, cwd, fetchMarker, settl
       resolve({ ...result, output });
     }
     const poll = setInterval(() => {
-      const visible = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
-      if ((TUI_ESCAPE_RE.test(output) || TUI_BANNER_RE.test(visible)) && bannerSeenAt === 0) bannerSeenAt = Date.now();
+      if (existsSync(readyMarker) && readySeenAt === 0) readySeenAt = Date.now();
       const settledCount = (existsSync(settleMarker) ? readFileSync(settleMarker, "utf8").split("\n").filter((l) => l === "settled").length : 0);
-      if (bannerSeenAt > 0 && Date.now() - bannerSeenAt > 1500) {
+      if (readySeenAt > 0 && Date.now() - readySeenAt > 500) {
         if (inputStep === 0) {
           child?.stdin?.write("seed first Codex context\r");
           inputStep = 1;
@@ -387,6 +386,7 @@ try {
     "openai-codex": { type: "oauth", access: fakeToken, refresh: "unused-smoke-token", expires: Date.now() + 3_600_000 },
   }));
   const managedSmokeExtension = join(installed, "extensions", "compaction", "manual-compact-smoke.ts");
+  const readyMarker = join(tmp, "manual-compact-ready.txt");
   const hookMarker = join(tmp, "manual-compact-hook.txt");
   const fetchMarker = join(tmp, "manual-compact-fetch.txt");
   const settleMarker = join(tmp, "manual-compact-settle.txt");
@@ -405,6 +405,9 @@ export default function (pi) {
     ].join("\\n");
     return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
   };
+  // This explicit CLI extension loads after package extensions. Its session_start
+  // handler runs after Pi has awaited preceding extension startup handlers.
+  pi.on("session_start", () => writeFileSync(process.env.BPI_MANUAL_COMPACT_READY_MARKER, "ready"));
   pi.on("agent_end", () => {
     try { appendFileSync(process.env.BPI_MANUAL_COMPACT_SETTLE_MARKER, "settled\\n"); } catch {}
   });
@@ -424,11 +427,13 @@ export default function (pi) {
         HOME: tmp,
         PI_CODING_AGENT_DIR: agentDir,
         PI_OFFLINE: "1",
+        BPI_MANUAL_COMPACT_READY_MARKER: readyMarker,
         BPI_MANUAL_COMPACT_HOOK_MARKER: hookMarker,
         BPI_MANUAL_COMPACT_FETCH_MARKER: fetchMarker,
         BPI_MANUAL_COMPACT_SETTLE_MARKER: settleMarker,
       },
       cwd: projectDir,
+      readyMarker,
       fetchMarker,
       settleMarker,
     },
