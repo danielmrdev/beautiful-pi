@@ -32,7 +32,7 @@ Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the term
 
 ### Prerequisites
 
-- [pi](https://github.com/earendil-works/pi) `0.85.1–0.99.1` — install it globally. Pi `0.99.2` is not yet in the verified peer range.
+- [pi](https://github.com/earendil-works/pi) `0.85.1–0.99.2` — install it globally.
 - A [Nerd Font](https://www.nerdfonts.com/) installed and configured in your
   terminal (recommended). The extensions degrade gracefully with ASCII fallbacks.
 
@@ -259,7 +259,7 @@ account-specific checkpoint identity and credentials; switching accounts with
 a checkpoint from another account fails closed. Compaction uses the Codex
 Responses API, keeps its opaque checkpoint in Pi's native compaction entry,
 and fails closed if the remote request fails. On supported
-Pi versions (0.85.1–0.99.1), **Pi controls when** compaction runs: configure
+Pi versions (0.85.1–0.99.2), **Pi controls when** compaction runs: configure
 `compaction.reserveTokens` in `~/.pi/agent/settings.json` or project-local
 `.pi/settings.json`. Pi triggers when used tokens exceed
 `contextWindow - reserveTokens`; default reserve is 16,384 tokens. For a

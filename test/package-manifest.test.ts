@@ -18,6 +18,12 @@ const expectedDependencies = {
   "pi-rtk-optimizer": "0.9.0",
 };
 
+const expectedPiPeers = {
+  "@earendil-works/pi-ai": ">=0.85.1 <0.99.3",
+  "@earendil-works/pi-coding-agent": ">=0.85.1 <0.99.3",
+  "@earendil-works/pi-tui": ">=0.85.1 <0.99.3",
+};
+
 const expectedPublishFiles = [
   "extensions",
   "assets",
@@ -109,6 +115,7 @@ test("package catalog pins selected integrations and resources explicitly", () =
   assert.equal(packageJson.bundledDependencies, undefined);
   assert.deepEqual(packageJson.files, expectedPublishFiles);
   assert.deepEqual(packageJson.dependencies, expectedDependencies);
+  assert.deepEqual(packageJson.peerDependencies, expectedPiPeers);
   assert.deepEqual(packageJson.pi, {
     ...expectedManifest,
     image: "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png",

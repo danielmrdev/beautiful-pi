@@ -1,6 +1,6 @@
 {
   "name": "beautiful-pi",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Beautiful UI extensions for pi \u2014 footer, banner, and Nerd Fonts support",
   "keywords": [
     "pi-package",
@@ -47,9 +47,9 @@
     "pi-blackhole": "0.5.10"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.85.1 <0.99.2",
-    "@earendil-works/pi-coding-agent": ">=0.85.1 <0.99.2",
-    "@earendil-works/pi-tui": ">=0.85.1 <0.99.2"
+    "@earendil-works/pi-ai": ">=0.85.1 <0.99.3",
+    "@earendil-works/pi-coding-agent": ">=0.85.1 <0.99.3",
+    "@earendil-works/pi-tui": ">=0.85.1 <0.99.3"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

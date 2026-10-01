@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@earendil-works/pi-ai':
-        specifier: '>=0.85.1 <0.99.2'
+        specifier: '>=0.85.1 <0.99.3'
         version: 0.85.1(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent':
-        specifier: '>=0.85.1 <0.99.2'
+        specifier: '>=0.85.1 <0.99.3'
         version: 0.85.1(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-tui':
-        specifier: '>=0.85.1 <0.99.2'
+        specifier: '>=0.85.1 <0.99.3'
         version: 0.85.1
       '@hypabolic/pi-hypa':
         specifier: 0.1.15
