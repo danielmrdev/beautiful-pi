@@ -5,20 +5,19 @@ dependencies. They remain owned and maintained by their upstream authors.
 
 | Package | Version | Maintainer | License | Documentation |
 | --- | ---: | --- | --- | --- |
-| [`@ogulcancelik/pi-codex-compaction`](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | 0.1.5 | Can Celik / ogulcancelik | MIT | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
-| [`@hypabolic/pi-hypa`](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) | 0.1.15 | atomic-mg / Hypabolic | FSL-1.1-ALv2 | [README](https://github.com/Hypabolic/Hypa#readme) |
-| [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator/tree/main/apps/pi-extension) | 0.27.24 | backnotprop | MIT OR Apache-2.0 | [README](https://github.com/backnotprop/plannotator) |
-| [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) | 0.19.0 | tintinweb | MIT | [README](https://github.com/tintinweb/pi-subagents#readme) |
-| [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.12.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
-| [`pi-rtk-optimizer`](https://github.com/MasuRii/pi-rtk-optimizer) | 0.9.0 | MasuRii | MIT | [README](https://github.com/MasuRii/pi-rtk-optimizer#readme) |
-| [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.12.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
-| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.10 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
+| [`@ogulcancelik/pi-codex-compaction`](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) | 0.1.6 | Can Celik / ogulcancelik | MIT | [README](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction#readme) |
+| [`@hypabolic/pi-hypa`](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) | 1.0.8 | atomic-mg / Hypabolic | FSL-1.1-ALv2 | [README](https://github.com/Hypabolic/Hypa#readme) |
+| [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator/tree/main/apps/pi-extension) | 0.28.18 | backnotprop | MIT OR Apache-2.0 | [README](https://github.com/backnotprop/plannotator) |
+| [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) | 0.22.0 | tintinweb | MIT | [README](https://github.com/tintinweb/pi-subagents#readme) |
+| [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.13.8 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
+| [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.13.8 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
+| [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.12 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
-This table covers all eight direct integrations selected by the beautiful-pi
+This table covers all seven direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
 
-`pi-blackhole@0.5.10` is the official release and includes the
+`pi-blackhole@0.5.12` is the official release and includes the
 `skipForProviders` capability used by beautiful-pi to coordinate it with
 Codex compaction. The MIT notice below applies to the upstream package.
 
@@ -32,8 +31,8 @@ with that package, which remains the authoritative notice for those packages.
 
 The MIT text below applies to `@ogulcancelik/pi-codex-compaction`,
 `@plannotator/pi-extension` (MIT option), `@tintinweb/pi-subagents`,
-`@juicesharp/rpiv-ask-user-question`, `pi-rtk-optimizer`,
-`@juicesharp/rpiv-btw`, and `pi-blackhole`.
+`@juicesharp/rpiv-ask-user-question`, `@juicesharp/rpiv-btw`, and
+`pi-blackhole`.
 
 Copyright notices:
 
@@ -41,7 +40,6 @@ Copyright notices:
 - Copyright (c) 2025 backnotprop
 - Copyright (c) 2026 tintinweb
 - Copyright (c) 2026 juicesharp
-- Copyright (c) 2026 MasuRii
 - Copyright (c) 2026 k0valik
 
 ```text
@@ -51,7 +49,6 @@ Copyright (c) 2025 Can Celik
 Copyright (c) 2025 backnotprop
 Copyright (c) 2026 tintinweb
 Copyright (c) 2026 juicesharp
-Copyright (c) 2026 MasuRii
 Copyright (c) 2026 k0valik
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -75,7 +72,7 @@ SOFTWARE.
 
 ### Functional Source License, Version 1.1, ALv2 Future License
 
-Applies to `@hypabolic/pi-hypa`, version 0.1.15.
+Applies to `@hypabolic/pi-hypa`, version 1.0.8.
 
 ```text
 Functional Source License, Version 1.1, ALv2 Future License
@@ -186,7 +183,7 @@ record its MIT option; its alternative Apache-2.0 terms are reproduced below.
 
 ### Apache License 2.0
 
-Applies to `@plannotator/pi-extension`, version 0.27.24.
+Applies to `@plannotator/pi-extension`, version 0.28.18.
 
 ```text
 Apache License

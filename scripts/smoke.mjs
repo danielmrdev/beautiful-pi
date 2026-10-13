@@ -16,9 +16,8 @@
  *      dependencies strictly, including the official pi-blackhole release.
  *   2b. Replicate pi's git-based update (`pi update --extensions`): npm
  *      installs the repo tree as the ROOT project with `npm install
- *      --omit=dev`. There pi-rtk-optimizer is a DIRECT dependency, where npm
- *      ignores the overrides field — the shipped `.npmrc`
- *      (legacy-peer-deps=true) is what makes it resolve (issue #18).
+ *      --omit=dev`. Keep peer resolution strict so future mismatches are
+ *      caught here instead of hidden by a legacy-peer-deps override.
  *   3. Assert every package.json "pi" manifest path (extensions, skills,
  *      prompts, themes) resolves relative to the installed package, every direct
  *      dependency is present, and the installed pi-blackhole carries the
@@ -55,6 +54,7 @@ const PACKAGE_VERSION = JSON.parse(
 ).version;
 const TARBALL_NAME = `beautiful-pi-${PACKAGE_VERSION}.tgz`;
 const TARBALL = join(ROOT, TARBALL_NAME);
+const SMOKE_PI_VERSION = process.env.BPI_SMOKE_PI_VERSION;
 // The real load-phase signal is "Failed to load extension"; the "conflicts
 // with" branches are a safety net in case a future pi/provider prints one.
 const LOAD_ERROR_RE =
@@ -212,6 +212,24 @@ try {
   // own managed install (npm install, no --legacy-peer-deps). Any strict
   // peer-resolution gap here is a release blocker (see issue #18).
   mkdirSync(npmDir, { recursive: true });
+  if (SMOKE_PI_VERSION) {
+    writeFileSync(
+      join(npmDir, "package.json"),
+      JSON.stringify({
+        name: "bpi-smoke-host",
+        private: true,
+        dependencies: Object.fromEntries(
+          [
+            "@earendil-works/pi-agent-core",
+            "@earendil-works/pi-ai",
+            "@earendil-works/pi-coding-agent",
+            "@earendil-works/pi-tui",
+          ].map((name) => [name, SMOKE_PI_VERSION]),
+        ),
+      }, null, 2),
+    );
+    ok(`pinning Pi peer packages to ${SMOKE_PI_VERSION}`);
+  }
   ok("installing tarball + dependencies (npm, strict peer resolution)");
   const install = run(
     "npm",
@@ -226,12 +244,10 @@ try {
     ok("dependencies resolved");
   }
 
-  // 2b. Replicate pi's git-based update (the path that failed in the field):
-  // pi clones the repo and runs `npm install --omit=dev` with beautiful-pi's
-  // package.json as the ROOT project. pi-rtk-optimizer is then a direct
-  // dependency, where npm ignores the overrides field entirely — the shipped
-  // .npmrc (legacy-peer-deps=true) is the fix. A regression here breaks
-  // `pi update --extensions`.
+  // 2b. Replicate pi's git-based update: pi clones the repo and runs
+  // `npm install --omit=dev` with beautiful-pi's package.json as the ROOT
+  // project. Keep this strict install covered so peer conflicts block release
+  // instead of being hidden by a legacy-peer-deps setting.
   const gitDir = join(tmp, "git-update");
   mkdirSync(gitDir, { recursive: true });
   cpSync(ROOT, gitDir, {
@@ -256,7 +272,7 @@ try {
   } else if (gitInstall.status !== 0) {
     fail(`git-update install failed: ${(gitInstall.stderr || "").slice(0, 500)}`);
   } else {
-    ok("git-update install resolved (legacy-peer-deps via shipped .npmrc)");
+    ok("git-update install resolved (strict peer resolution)");
   }
 
   // Point this process at the temp agent so the installed coordinator's

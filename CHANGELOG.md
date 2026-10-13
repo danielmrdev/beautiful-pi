@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
+### Changed
+
+- Support Pi 1.2.0–1.2.x; peer range is now `>=1.2.0 <1.3.0`.
+  Pi 1.1's current MCP/codemode dependency combination fails compaction smoke.
+- Refresh bundled integrations: Codex compaction 0.1.6, Hypa 1.0.8,
+  Plannotator 0.28.18, pi-subagents 0.22.0, ask-user-question and BTW 2.13.8,
+  and Blackhole 0.5.12.
+- Plannotator Inbox can connect detected agents when `plannotator inbox` runs;
+  it asks before writing agent instruction notes.
+- pi-subagents 0.22.0 changes default `smart` background completion delivery;
+  use `group` join mode for one notification per parent-turn batch.
+- Pin Pi 1.2.0 for development checks and update `tsx` to 4.23.15.
+
+### Fixed
+
+- Hypa 1.0.8 fixes panes freezing when another window or cube peer views them,
+  including viewers with different window sizes.
+- pi-subagents 0.22.0 cleans up widget and group-join timers on reload and
+  session replacement; 0.21.0 also restores cloned mention history on Pi 1.x.
+- Plannotator 0.28.17 fixes a Pi crash when a review tab stays open across
+  `/reload` or session switch.
+
+### Removed
+
+- Remove `pi-rtk-optimizer`; its Pi peer range excludes Pi 1.x and Hypa covers
+  overlapping command rewriting and output compression.
+
 ## [0.1.8] - 2026-10-01
 
 ### Changed

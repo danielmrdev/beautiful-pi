@@ -8,20 +8,20 @@ const { join, resolve } = require("node:path");
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
 
 const expectedDependencies = {
-  "@hypabolic/pi-hypa": "0.1.15",
-  "@juicesharp/rpiv-ask-user-question": "2.12.0",
-  "@juicesharp/rpiv-btw": "2.12.0",
-  "@ogulcancelik/pi-codex-compaction": "0.1.5",
-  "@plannotator/pi-extension": "0.27.24",
-  "@tintinweb/pi-subagents": "0.19.0",
-  "pi-blackhole": "0.5.10",
-  "pi-rtk-optimizer": "0.9.0",
+  "@hypabolic/pi-hypa": "1.0.8",
+  "@juicesharp/rpiv-ask-user-question": "2.13.8",
+  "@juicesharp/rpiv-btw": "2.13.8",
+  "@ogulcancelik/pi-codex-compaction": "0.1.6",
+  "@plannotator/pi-extension": "0.28.18",
+  "@tintinweb/pi-subagents": "0.22.0",
+  "pi-blackhole": "0.5.12",
 };
 
 const expectedPiPeers = {
-  "@earendil-works/pi-ai": ">=0.85.1 <0.99.3",
-  "@earendil-works/pi-coding-agent": ">=0.85.1 <0.99.3",
-  "@earendil-works/pi-tui": ">=0.85.1 <0.99.3",
+  "@earendil-works/pi-agent-core": ">=1.2.0 <1.3.0",
+  "@earendil-works/pi-ai": ">=1.2.0 <1.3.0",
+  "@earendil-works/pi-coding-agent": ">=1.2.0 <1.3.0",
+  "@earendil-works/pi-tui": ">=1.2.0 <1.3.0",
 };
 
 const expectedPublishFiles = [
@@ -42,7 +42,6 @@ const expectedManifest = {
     "../@plannotator/pi-extension/index.ts",
     "../@tintinweb/pi-subagents/src/index.ts",
     "../@juicesharp/rpiv-ask-user-question/index.ts",
-    "../pi-rtk-optimizer/index.ts",
     "../@juicesharp/rpiv-btw/index.ts",
     "./extensions/compaction/blackhole-engine.ts",
   ],
@@ -67,12 +66,12 @@ async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => v
   try {
     mkdirSync(engineDir, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ dependencies: {
-      "@ogulcancelik/pi-codex-compaction": "0.1.5",
-      "pi-blackhole": "0.5.10",
+      "@ogulcancelik/pi-codex-compaction": "0.1.6",
+      "pi-blackhole": "0.5.12",
     } }));
     for (const [name, entry, oldVersion, version] of [
-      ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.5"],
-      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.10"],
+      ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.6"],
+      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.12"],
     ]) {
       const packages = [[join(root, "node_modules", name), oldVersion]];
       if (nested) packages.push([join(pkg, "node_modules", name), version]);
@@ -103,10 +102,10 @@ test("compaction engines prefer pinned nested dependencies over stale siblings",
   await withEngineLayout(true, async (load) => {
     const pi: any = { on() {} };
     load("./codex-engine.ts").default(pi);
-    assert.equal(pi.loadedVersion, "0.1.5");
+    assert.equal(pi.loadedVersion, "0.1.6");
     delete pi.loadedVersion;
     await load("./blackhole-engine.ts").default(pi);
-    assert.equal(pi.loadedVersion, "0.5.10");
+    assert.equal(pi.loadedVersion, "0.5.12");
   });
 });
 
@@ -116,6 +115,19 @@ test("package catalog pins selected integrations and resources explicitly", () =
   assert.deepEqual(packageJson.files, expectedPublishFiles);
   assert.deepEqual(packageJson.dependencies, expectedDependencies);
   assert.deepEqual(packageJson.peerDependencies, expectedPiPeers);
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(packageJson.devDependencies).filter(([name]) =>
+        name.startsWith("@earendil-works/pi-"),
+      ),
+    ),
+    {
+      "@earendil-works/pi-agent-core": "1.2.0",
+      "@earendil-works/pi-ai": "1.2.0",
+      "@earendil-works/pi-coding-agent": "1.2.0",
+      "@earendil-works/pi-tui": "1.2.0",
+    },
+  );
   assert.deepEqual(packageJson.pi, {
     ...expectedManifest,
     image: "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png",

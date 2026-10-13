@@ -1,20 +1,24 @@
 allowBuilds:
-  '@google/genai': set this to true or false
+  '@google/genai': false
   esbuild: set this to true or false
   protobufjs: set this to true or false
-  '@hypabolic/hypa-linux-x64@0.1.15': true
-  '@hypabolic/pi-hypa@0.1.15': true
+  '@hypabolic/hypa-linux-x64@1.0.8': true
+  '@hypabolic/pi-hypa@1.0.8': true
   'node-pty@1.1.0': true
-  'pi-rtk-optimizer@0.9.0': true
   '@hypabolic/hypa-linux-x64': set this to true or false
   '@hypabolic/pi-hypa': set this to true or false
 minimumReleaseAgeExclude:
-  - '@earendil-works/pi-agent-core@0.80.10'
-  - '@earendil-works/pi-ai@0.80.10'
-  - '@earendil-works/pi-coding-agent@0.80.10'
-  - '@earendil-works/pi-tui@0.80.10'
-  - '@plannotator/pi-extension@0.27.24'
+  - '@aws-sdk/token-providers@3.1149.0' # Required by Pi 1.2.0; published 2026-10-09
+  - '@earendil-works/pi-agent-core@0.80.10 || 1.2.0'
+  - '@earendil-works/pi-ai@0.80.10 || 1.2.0'
+  - '@earendil-works/pi-coding-agent@0.80.10 || 1.2.0'
+  - '@earendil-works/pi-tui@0.80.10 || 1.2.0'
+  - '@plannotator/pi-extension@0.28.18' # Latest selected release, published 2026-10-13
+  - '@tintinweb/pi-subagents@0.22.0' # Selected reload cleanup fix, published 2026-10-13
   - pi-blackhole@0.5.8
-  - '@juicesharp/rpiv-ask-user-question@2.12.0'
-  - '@juicesharp/rpiv-btw@2.12.0'
-  - '@juicesharp/rpiv-config@2.12.0'
+  - '@juicesharp/rpiv-ask-user-question@2.12.0 || 2.13.8'
+  - '@juicesharp/rpiv-btw@2.12.0 || 2.13.8'
+  - '@juicesharp/rpiv-config@2.12.0 || 2.13.8'
+  - '@earendil-works/pi-codemode@1.2.0'
+  - '@earendil-works/pi-mcp@1.2.0'
+  - '@earendil-works/pi-telemetry@1.2.0'
