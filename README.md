@@ -114,8 +114,11 @@ dependencies, pinned exactly in `package.json`:
 | Context | `@hypabolic/pi-hypa` | 1.0.8 | Command rewriting/compression plus Hypa-backed shell and file tools. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
 | Workflows | `@plannotator/pi-extension` | 0.28.18 | Interactive plan, code/PR review and agent Inbox. | [repo](https://github.com/backnotprop/plannotator) |
 | Workflows | `@tintinweb/pi-subagents` | 0.22.0 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.13.8 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.13.8 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.13.9 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.13.9 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Interaction | `@juicesharp/rpiv-todo` | 2.13.9 | Agent task checklist with persistent live panel and `/todos`. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) |
+
+`@juicesharp/rpiv-todo` adds a `todo` tool and a live checklist above the editor. It survives `/reload` and compaction; `/todos` prints the full list. This is separate from `/agents`, which lists active delegated subagents.
 
 Hypa 1.0.8 fixes panes freezing when another window or cube peer views them,
 including viewers with different window sizes. The Pi extension prefers a

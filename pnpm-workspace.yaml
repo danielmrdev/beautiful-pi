@@ -16,9 +16,10 @@ minimumReleaseAgeExclude:
   - '@plannotator/pi-extension@0.28.18' # Latest selected release, published 2026-10-13
   - '@tintinweb/pi-subagents@0.22.0' # Selected reload cleanup fix, published 2026-10-13
   - pi-blackhole@0.5.8
-  - '@juicesharp/rpiv-ask-user-question@2.12.0 || 2.13.8'
-  - '@juicesharp/rpiv-btw@2.12.0 || 2.13.8'
-  - '@juicesharp/rpiv-config@2.12.0 || 2.13.8'
+  - '@juicesharp/rpiv-ask-user-question@2.12.0 || 2.13.9'
+  - '@juicesharp/rpiv-btw@2.12.0 || 2.13.9'
+  - '@juicesharp/rpiv-config@2.12.0 || 2.13.9'
+  - '@juicesharp/rpiv-todo@2.13.9' # Added task overlay, published 2026-10-17
   - '@earendil-works/pi-codemode@1.2.0'
   - '@earendil-works/pi-mcp@1.2.0'
   - '@earendil-works/pi-telemetry@1.2.0'

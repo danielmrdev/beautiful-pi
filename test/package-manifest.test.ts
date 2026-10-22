@@ -9,8 +9,9 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"
 
 const expectedDependencies = {
   "@hypabolic/pi-hypa": "1.0.8",
-  "@juicesharp/rpiv-ask-user-question": "2.13.8",
-  "@juicesharp/rpiv-btw": "2.13.8",
+  "@juicesharp/rpiv-ask-user-question": "2.13.9",
+  "@juicesharp/rpiv-btw": "2.13.9",
+  "@juicesharp/rpiv-todo": "2.13.9",
   "@ogulcancelik/pi-codex-compaction": "0.1.6",
   "@plannotator/pi-extension": "0.28.18",
   "@tintinweb/pi-subagents": "0.22.0",
@@ -43,6 +44,7 @@ const expectedManifest = {
     "../@tintinweb/pi-subagents/src/index.ts",
     "../@juicesharp/rpiv-ask-user-question/index.ts",
     "../@juicesharp/rpiv-btw/index.ts",
+    "../@juicesharp/rpiv-todo/index.ts",
     "./extensions/compaction/blackhole-engine.ts",
   ],
   skills: ["../@plannotator/pi-extension/skills/plannotator/SKILL.md"],

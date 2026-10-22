@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Bundle `@juicesharp/rpiv-todo@2.13.9` with a persistent task panel and `/todos` command.
+
+### Changed
+
+- Refresh `@juicesharp/rpiv-ask-user-question` and `@juicesharp/rpiv-btw` to 2.13.9.
+
 ## [0.2.0] - 2026-10-13
 
 ### Changed
