@@ -26,7 +26,7 @@
  * agent-dir resolution points at the clean temp installation.
  */
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -65,6 +65,7 @@ for (const [label, p] of requiredModules) {
 
 interface CompactResult {
   compaction?: {
+    firstKeptEntryId?: string;
     details?: {
       compactor?: string;
       kind?: string;
@@ -110,17 +111,26 @@ async function main(): Promise<number> {
   const pi = fakePi();
   coordinator.default(pi);
 
+  // Mirror the user's opt-in Blackhole tail policy in this disposable agent.
+  const cfgPath = join(agentDir, "pi-blackhole", "pi-blackhole-config.json");
+  mkdirSync(join(agentDir, "pi-blackhole"), { recursive: true });
+  writeFileSync(cfgPath, JSON.stringify({ tailBehavior: "minimal" }));
+
   // 1. Coordinator wiring: running its session_start handler must write the
-  //    provider-aware skip config into the clean agent dir at runtime.
+  //    provider-aware skip config into the clean agent dir at runtime without
+  //    overwriting the existing tail policy.
   const sessionStart = (pi.events.get("session_start") ?? [])[0] as
     | ((event: unknown, ctx: unknown) => void)
     | undefined;
   assert.ok(sessionStart, "coordinator registers a session_start handler");
   sessionStart({}, { hasUI: false });
-  const cfgPath = join(agentDir, "pi-blackhole", "pi-blackhole-config.json");
   assert.ok(existsSync(cfgPath), `skip config written at runtime: ${cfgPath}`);
-  const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as { skipForProviders?: unknown[] };
+  const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as {
+    skipForProviders?: unknown[];
+    tailBehavior?: string;
+  };
   assert.deepEqual(cfg.skipForProviders, ["openai-codex"]);
+  assert.equal(cfg.tailBehavior, "minimal", "coordinator preserves the user's tail policy");
   console.log("✓ coordinator session_start wrote skipForProviders at runtime");
 
   // 2. Wire BOTH engines exactly as pi loads them (codex first, blackhole
@@ -192,6 +202,36 @@ async function main(): Promise<number> {
       "non-Codex session is handled by blackhole",
     );
     console.log("✓ one-engine-per-turn at runtime: non-Codex session → blackhole compacts");
+
+    // Pi can preserve a later split-turn cut even when the live window has only
+    // one user message. Blackhole 0.5.14 fixed minimal-tail compaction for this
+    // long single-turn case; verify it with the user's configured policy.
+    const longTurnBranch = [
+      { id: "turn-user", type: "message", message: { role: "user", content: "start long turn" } },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        id: `turn-assistant-${i}`,
+        type: "message",
+        message: { role: "assistant", content: `continued work ${i}` },
+      })),
+    ];
+    const longTurnEvent = makeEvent(longTurnBranch);
+    (longTurnEvent.preparation as { firstKeptEntryId: string }).firstKeptEntryId = "turn-assistant-5";
+    const longTurnResult = (await pi.events.emitWithResult(
+      "session_before_compact",
+      longTurnEvent,
+      makeCtx(NON_CODEX_MODEL, longTurnBranch),
+    )) as CompactResult | undefined;
+    assert.equal(
+      longTurnResult?.compaction?.details?.compactor,
+      "blackhole",
+      "Blackhole compacts a single-turn branch with the configured minimal tail",
+    );
+    assert.equal(
+      longTurnResult?.compaction?.firstKeptEntryId,
+      "turn-assistant-5",
+      "minimal tail uses Pi's later safe split-turn boundary instead of compacting everything",
+    );
+    console.log("✓ configured minimal tail preserves Pi's later split-turn boundary");
   } finally {
     globalThis.fetch = origFetch;
   }

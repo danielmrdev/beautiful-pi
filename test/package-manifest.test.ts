@@ -8,21 +8,21 @@ const { join, resolve } = require("node:path");
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
 
 const expectedDependencies = {
-  "@hypabolic/pi-hypa": "1.0.8",
+  "@hypabolic/pi-hypa": "1.2.0",
   "@juicesharp/rpiv-ask-user-question": "2.13.9",
   "@juicesharp/rpiv-btw": "2.13.9",
   "@juicesharp/rpiv-todo": "2.13.9",
   "@ogulcancelik/pi-codex-compaction": "0.1.6",
-  "@plannotator/pi-extension": "0.28.18",
+  "@plannotator/pi-extension": "0.28.26",
   "@tintinweb/pi-subagents": "0.22.0",
-  "pi-blackhole": "0.5.12",
+  "pi-blackhole": "0.5.15",
 };
 
 const expectedPiPeers = {
-  "@earendil-works/pi-agent-core": ">=1.2.0 <1.3.0",
-  "@earendil-works/pi-ai": ">=1.2.0 <1.3.0",
-  "@earendil-works/pi-coding-agent": ">=1.2.0 <1.3.0",
-  "@earendil-works/pi-tui": ">=1.2.0 <1.3.0",
+  "@earendil-works/pi-agent-core": ">=1.2.0 <1.5.0",
+  "@earendil-works/pi-ai": ">=1.2.0 <1.5.0",
+  "@earendil-works/pi-coding-agent": ">=1.2.0 <1.5.0",
+  "@earendil-works/pi-tui": ">=1.2.0 <1.5.0",
 };
 
 const expectedPublishFiles = [
@@ -69,11 +69,11 @@ async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => v
     mkdirSync(engineDir, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ dependencies: {
       "@ogulcancelik/pi-codex-compaction": "0.1.6",
-      "pi-blackhole": "0.5.12",
+      "pi-blackhole": "0.5.15",
     } }));
     for (const [name, entry, oldVersion, version] of [
       ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.6"],
-      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.12"],
+      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.15"],
     ]) {
       const packages = [[join(root, "node_modules", name), oldVersion]];
       if (nested) packages.push([join(pkg, "node_modules", name), version]);
@@ -107,7 +107,7 @@ test("compaction engines prefer pinned nested dependencies over stale siblings",
     assert.equal(pi.loadedVersion, "0.1.6");
     delete pi.loadedVersion;
     await load("./blackhole-engine.ts").default(pi);
-    assert.equal(pi.loadedVersion, "0.5.12");
+    assert.equal(pi.loadedVersion, "0.5.15");
   });
 });
 
@@ -117,19 +117,15 @@ test("package catalog pins selected integrations and resources explicitly", () =
   assert.deepEqual(packageJson.files, expectedPublishFiles);
   assert.deepEqual(packageJson.dependencies, expectedDependencies);
   assert.deepEqual(packageJson.peerDependencies, expectedPiPeers);
-  assert.deepEqual(
-    Object.fromEntries(
-      Object.entries(packageJson.devDependencies).filter(([name]) =>
-        name.startsWith("@earendil-works/pi-"),
-      ),
+  const piDevDependencies = Object.fromEntries(
+    Object.entries(packageJson.devDependencies).filter(([name]) =>
+      name.startsWith("@earendil-works/pi-"),
     ),
-    {
-      "@earendil-works/pi-agent-core": "1.2.0",
-      "@earendil-works/pi-ai": "1.2.0",
-      "@earendil-works/pi-coding-agent": "1.2.0",
-      "@earendil-works/pi-tui": "1.2.0",
-    },
   );
+  assert.deepEqual(Object.keys(piDevDependencies).sort(), Object.keys(expectedPiPeers).sort());
+  const piDevVersion = packageJson.devDependencies["@earendil-works/pi-coding-agent"];
+  assert.equal(typeof piDevVersion, "string");
+  assert.ok(Object.values(piDevDependencies).every((version) => version === piDevVersion));
   assert.deepEqual(packageJson.pi, {
     ...expectedManifest,
     image: "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png",

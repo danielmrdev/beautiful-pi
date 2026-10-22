@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Added
 
 - Bundle `@juicesharp/rpiv-todo@2.13.9` with a persistent task panel and `/todos` command.
 
 ### Changed
 
-- Refresh `@juicesharp/rpiv-ask-user-question` and `@juicesharp/rpiv-btw` to 2.13.9.
+- Support Pi 1.2.0–1.4.x; widen all Pi peer ranges to `>=1.2.0 <1.5.0`.
+- Update Hypa to 1.2.0, Plannotator to 0.28.26, and Blackhole to 0.5.15.
+- Plannotator 0.28.26 adds Pi session review events and a moving checklist widget.
+
+### Fixed
+
+- Blackhole 0.5.14 preserves Pi's later safe split-turn boundary with `tailBehavior: "minimal"` on long single-turn branches.
 
 ## [0.2.0] - 2026-10-13
 

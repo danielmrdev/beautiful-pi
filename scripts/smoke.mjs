@@ -321,6 +321,25 @@ try {
     fail("pi-blackhole installed without the provider-aware capability");
   }
 
+  const interactions = run(
+    process.execPath,
+    ["--import=tsx", join(ROOT, "scripts", "smoke", "interactions-check.mts"), installed],
+    {
+      env: {
+        ...process.env,
+        HOME: tmp,
+        PI_CODING_AGENT_DIR: agentDir,
+        XDG_CONFIG_HOME: join(tmp, "config"),
+      },
+      timeout: 30_000,
+    },
+  );
+  if (interactions.status === 0) {
+    ok("bundled interaction commands and todo tool registered");
+  } else {
+    fail(`interaction registration check failed:\n${(interactions.stderr || interactions.stdout || "").slice(0, 800)}`);
+  }
+
   // 4. Boot pi in print mode (no credentials — expected to stop at auth).
   writeFileSync(
     join(agentDir, "settings.json"),

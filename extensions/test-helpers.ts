@@ -17,6 +17,7 @@ export interface FakePi extends ExtensionAPI {
   events: RecordedEvents;
   commands: Map<string, unknown>;
   shortcuts: Map<string, unknown>;
+  flags: Map<string, unknown>;
   toolRegistrations: Map<string, unknown>;
 }
 
@@ -60,19 +61,23 @@ export function fakePi(): FakePi {
   };
   const commands = new Map<string, unknown>();
   const shortcuts = new Map<string, unknown>();
+  const flags = new Map<string, unknown>();
   const toolRegistrations = new Map<string, unknown>();
   return {
     events,
     commands,
     shortcuts,
+    flags,
     toolRegistrations,
     on(name: string, handler: Function) {
       events.on(name, handler as (data: unknown) => void);
     },
     registerCommand(name: string, config: unknown) { commands.set(name, config); },
     registerShortcut(name: string, config: unknown) { shortcuts.set(name, config); },
+    registerFlag(name: string, config: unknown) { flags.set(name, config); },
     registerEntryRenderer(_kind: string, _renderer: unknown) {},
-    registerTool(name: string, _def: unknown, _handler: unknown) {
+    registerTool(definition: string | { name: string }, _def?: unknown, _handler?: unknown) {
+      const name = typeof definition === "string" ? definition : definition.name;
       toolRegistrations.set(name, true);
     },
     getSessionName() { return undefined; },
