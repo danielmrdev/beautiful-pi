@@ -296,7 +296,8 @@ b-pi's supported range. Other providers follow Pi's normal lifecycle.
 
 `pi-blackhole@0.5.15` includes the provider-aware skip capability. Compaction
 engine selection is coordinated automatically:
-Codex models use native Codex compaction (opaque checkpoints preserved), every
+Codex models use native Codex compaction; opaque checkpoints and provider-supplied
+developer/system items (including in-band tool declarations) survive replay. Every
 other model uses Blackhole, exactly one engine acts per turn, and the selection
 is independent of extension registration order. On session start the
 coordinator appends `"skipForProviders": ["openai-codex"]` to

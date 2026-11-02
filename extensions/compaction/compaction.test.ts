@@ -122,10 +122,11 @@ async function prepareProviderRequest(
   model: unknown,
   branch: unknown[],
   onAbort?: () => void,
+  input: any[] = [{ type: "message", role: "user", content: "new turn" }],
 ): Promise<any> {
   return pi.events.emitWithResult(
     "before_provider_request",
-    { payload: { model: "gpt-5.5", input: [{ type: "message", role: "user", content: "new turn" }] } },
+    { payload: { model: "gpt-5.5", input } },
     makeCtx(model, branch, { onAbort }),
   );
 }
@@ -240,6 +241,50 @@ describe("/codex compaction coordination", () => {
     );
   });
 
+  test("base Codex checkpoint replay preserves provider tool and system declarations", async () => {
+    stubCodexCompactionSuccess();
+    ensureBlackholeSkipConfig();
+    const pi = await wireEngines("codex-first");
+    const branch = branchWith(8);
+    const compacted = await compactOnce(pi, CODEX_MODEL, branch);
+    assert.equal(compacted?.compaction?.details?.kind, NATIVE_COMPACTION_KIND);
+    branch.push({
+      type: "compaction",
+      id: "checkpoint-entry",
+      parentId: "m7",
+      timestamp: new Date().toISOString(),
+      summary: compacted.compaction.summary,
+      firstKeptEntryId: compacted.compaction.firstKeptEntryId,
+      details: compacted.compaction.details,
+    });
+    const providerInput = [
+      {
+        type: "additional_tools",
+        role: "developer",
+        tools: [{ type: "function", name: "bash", parameters: { type: "object" }, strict: null }],
+      },
+      { role: "developer", content: "Do not call tools that are unavailable." },
+      { role: "system", content: "Follow current session policy." },
+      { role: "user", content: "local marker" },
+    ];
+
+    const replay = await prepareProviderRequest(pi, CODEX_MODEL, branch, undefined, providerInput);
+    assert.deepEqual(
+      replay?.input?.slice(0, 3),
+      providerInput.filter((item) => item.role === "developer" || item.role === "system"),
+      "provider tool declarations and system updates survive history replacement",
+    );
+    assert.equal(
+      replay?.input?.some((item: any) => item.content === "local marker"),
+      false,
+      "ordinary stale request input is still replaced by checkpoint history",
+    );
+    assert.ok(
+      replay?.input?.some((item: any) => item.type === "compaction" && item.encrypted_content === "opaque-checkpoint"),
+      "opaque checkpoint is replayed after provider configuration items",
+    );
+  });
+
   test("managed Codex checkpoint replays for same account and blocks account switches", async () => {
     stubCodexCompactionSuccess();
     ensureBlackholeSkipConfig();
@@ -258,7 +303,22 @@ describe("/codex compaction coordination", () => {
       details: result.compaction.details,
     });
 
-    const replay = await prepareProviderRequest(pi, CODEX_ACCOUNT_MODEL, branch);
+    const providerInput = [
+      {
+        type: "additional_tools",
+        role: "developer",
+        tools: [{ type: "function", name: "bash", parameters: { type: "object" }, strict: null }],
+      },
+      { role: "developer", content: "Do not call tools that are unavailable." },
+      { role: "system", content: "Follow current session policy." },
+      { role: "user", content: "local marker" },
+    ];
+    const replay = await prepareProviderRequest(pi, CODEX_ACCOUNT_MODEL, branch, undefined, providerInput);
+    assert.deepEqual(
+      replay?.input?.slice(0, 3),
+      providerInput.filter((item) => item.role === "developer" || item.role === "system"),
+      "managed provider tool declarations and system updates survive history replacement",
+    );
     assert.ok(
       replay?.input?.some((item: any) => item.type === "compaction" && item.encrypted_content === "opaque-checkpoint"),
       "same account receives opaque native checkpoint on its next request",
@@ -276,6 +336,7 @@ describe("/codex compaction coordination", () => {
       { ...CODEX_ACCOUNT_MODEL, provider: "openai-codex-3" },
       branch,
       () => { aborted = true; },
+      providerInput,
     );
     assert.equal(aborted, true, "switching managed accounts aborts replay of another account's checkpoint");
     assert.deepEqual(switched?.input, [], "mismatched checkpoint is not sent to another account");

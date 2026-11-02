@@ -21,12 +21,38 @@ interface CodexModel {
   [key: string]: unknown;
 }
 
-function isManagedCodexModel(model: unknown): model is CodexModel {
+function isOpenAICodexModel(model: unknown): model is CodexModel {
   if (!model || typeof model !== "object") return false;
   const candidate = model as Partial<CodexModel>;
   return candidate.api === CODEX_API
     && typeof candidate.id === "string"
-    && /^openai-codex-\d+$/.test(candidate.provider ?? "");
+    && (candidate.provider === BASE_PROVIDER || /^openai-codex-\d+$/.test(candidate.provider ?? ""));
+}
+
+function isManagedCodexModel(model: unknown): model is CodexModel {
+  return isOpenAICodexModel(model) && model.provider !== BASE_PROVIDER;
+}
+
+// pi-codex-compaction 0.1.6 rebuilds input on checkpoint replay, dropping Pi's
+// in-band tool declarations and system updates carried as developer/system items.
+function preserveProviderInput(result: any, event: any): any {
+  const originalInput = event?.payload?.input;
+  if (
+    !Array.isArray(originalInput)
+    || !result
+    || typeof result !== "object"
+    || !Array.isArray(result.input)
+    || !result.input.some((item: any) => item?.type === "compaction")
+  ) {
+    return result;
+  }
+
+  const providerItems = originalInput.filter(
+    (item: any) => item && typeof item === "object" && (item.role === "developer" || item.role === "system"),
+  );
+  const missingItems = providerItems.filter((item: unknown) => !result.input.includes(item));
+  if (missingItems.length === 0) return result;
+  return { ...result, input: [...missingItems, ...result.input] };
 }
 
 function modelKey(model: CodexModel): string {
@@ -138,13 +164,17 @@ function withManagedCodexAccounts(pi: ExtensionAPI): ExtensionAPI {
       return (eventName: string, handler: Function, ...args: unknown[]) =>
         Reflect.apply(value, target, [eventName, (event: any, ctx: any, ...rest: unknown[]) => {
           const model = ctx?.model;
-          if (!isManagedCodexModel(model)) return handler(event, ctx, ...rest);
-
-          const projectedEvent = eventName === "session_before_compact" && event?.branchEntries
+          const managed = isManagedCodexModel(model);
+          const projectedEvent = managed && eventName === "session_before_compact" && event?.branchEntries
             ? { ...event, branchEntries: projectBranch(event.branchEntries, model) }
             : event;
-          const result = handler(projectedEvent, projectContext(ctx, model), ...rest);
-          if (eventName !== "session_before_compact") return result;
+          const handlerContext = managed ? projectContext(ctx, model) : ctx;
+          const result = handler(projectedEvent, handlerContext, ...rest);
+
+          if (eventName === "before_provider_request" && isOpenAICodexModel(model)) {
+            return Promise.resolve(result).then((value) => preserveProviderInput(value, event));
+          }
+          if (!managed || eventName !== "session_before_compact") return result;
           return Promise.resolve(result).then((value) => preserveAccountCheckpoint(value, model));
         }, ...args]);
     },
