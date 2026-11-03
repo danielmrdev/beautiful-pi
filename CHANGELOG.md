@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Support Pi 1.5.x; update development checks to Pi 1.5.0 and widen Pi peer ranges to `>=1.2.0 <1.6.0`.
+- Refresh bundled integrations: Plannotator 0.28.46, pi-subagents 0.22.1, ask-user-question, BTW and todo 2.15.0, and Blackhole 0.5.16.
+- Update TypeScript to 7.0.2.
+
 ## [0.3.1] - 2026-11-02
 
 ### Fixed

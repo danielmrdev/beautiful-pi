@@ -64,12 +64,15 @@ let tmpHome: string;
 let origHome: string | undefined;
 let origAgentDir: string | undefined;
 let origEnvSkip: string | undefined;
+let origRootSessions: string | undefined;
 let origFetch: typeof fetch;
 
 beforeEach(() => {
   origHome = process.env.HOME;
   origAgentDir = process.env.PI_CODING_AGENT_DIR;
   origEnvSkip = process.env.PI_BLACKHOLE_SKIP_PROVIDERS;
+  origRootSessions = process.env.PI_BLACKHOLE_ROOT_SESSIONS;
+  delete process.env.PI_BLACKHOLE_ROOT_SESSIONS;
   origFetch = globalThis.fetch;
   tmpHome = mkdtempSync(join(tmpdir(), "bpi-compaction-"));
   process.env.HOME = tmpHome;
@@ -86,6 +89,8 @@ afterEach(() => {
   else process.env.PI_CODING_AGENT_DIR = origAgentDir;
   if (origEnvSkip === undefined) delete process.env.PI_BLACKHOLE_SKIP_PROVIDERS;
   else process.env.PI_BLACKHOLE_SKIP_PROVIDERS = origEnvSkip;
+  if (origRootSessions === undefined) delete process.env.PI_BLACKHOLE_ROOT_SESSIONS;
+  else process.env.PI_BLACKHOLE_ROOT_SESSIONS = origRootSessions;
   rmSync(tmpHome, { recursive: true, force: true });
 });
 

@@ -9,20 +9,20 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"
 
 const expectedDependencies = {
   "@hypabolic/pi-hypa": "1.2.0",
-  "@juicesharp/rpiv-ask-user-question": "2.13.9",
-  "@juicesharp/rpiv-btw": "2.13.9",
-  "@juicesharp/rpiv-todo": "2.13.9",
+  "@juicesharp/rpiv-ask-user-question": "2.15.0",
+  "@juicesharp/rpiv-btw": "2.15.0",
+  "@juicesharp/rpiv-todo": "2.15.0",
   "@ogulcancelik/pi-codex-compaction": "0.1.6",
-  "@plannotator/pi-extension": "0.28.26",
-  "@tintinweb/pi-subagents": "0.22.0",
-  "pi-blackhole": "0.5.15",
+  "@plannotator/pi-extension": "0.28.46",
+  "@tintinweb/pi-subagents": "0.22.1",
+  "pi-blackhole": "0.5.16",
 };
 
 const expectedPiPeers = {
-  "@earendil-works/pi-agent-core": ">=1.2.0 <1.5.0",
-  "@earendil-works/pi-ai": ">=1.2.0 <1.5.0",
-  "@earendil-works/pi-coding-agent": ">=1.2.0 <1.5.0",
-  "@earendil-works/pi-tui": ">=1.2.0 <1.5.0",
+  "@earendil-works/pi-agent-core": ">=1.2.0 <1.6.0",
+  "@earendil-works/pi-ai": ">=1.2.0 <1.6.0",
+  "@earendil-works/pi-coding-agent": ">=1.2.0 <1.6.0",
+  "@earendil-works/pi-tui": ">=1.2.0 <1.6.0",
 };
 
 const expectedPublishFiles = [
@@ -69,11 +69,11 @@ async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => v
     mkdirSync(engineDir, { recursive: true });
     writeFileSync(join(pkg, "package.json"), JSON.stringify({ dependencies: {
       "@ogulcancelik/pi-codex-compaction": "0.1.6",
-      "pi-blackhole": "0.5.15",
+      "pi-blackhole": "0.5.16",
     } }));
     for (const [name, entry, oldVersion, version] of [
       ["@ogulcancelik/pi-codex-compaction", "index.ts", "0.1.3", "0.1.6"],
-      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.15"],
+      ["pi-blackhole", "dist/index.js", "0.4.3", "0.5.16"],
     ]) {
       const packages = [[join(root, "node_modules", name), oldVersion]];
       if (nested) packages.push([join(pkg, "node_modules", name), version]);
@@ -107,7 +107,7 @@ test("compaction engines prefer pinned nested dependencies over stale siblings",
     assert.equal(pi.loadedVersion, "0.1.6");
     delete pi.loadedVersion;
     await load("./blackhole-engine.ts").default(pi);
-    assert.equal(pi.loadedVersion, "0.5.15");
+    assert.equal(pi.loadedVersion, "0.5.16");
   });
 });
 

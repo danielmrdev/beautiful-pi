@@ -7,19 +7,20 @@ allowBuilds:
   'node-pty@1.1.0': true
 minimumReleaseAgeExclude:
   - '@aws-sdk/token-providers@3.1149.0' # Required by Pi 1.2.0; published 2026-10-09
-  - '@earendil-works/pi-agent-core@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0'
-  - '@earendil-works/pi-ai@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0'
-  - '@earendil-works/pi-coding-agent@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0'
-  - '@earendil-works/pi-tui@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0'
+  - '@earendil-works/pi-agent-core@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-ai@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-coding-agent@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-tui@0.80.10 || 1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
   - '@hypabolic/hypa@1.2.0' # Bundled CLI release, published 2026-10-20
   - '@hypabolic/pi-hypa@1.2.0' # Latest selected release, published 2026-10-20
-  - '@plannotator/pi-extension@0.28.26' # Latest selected release, published 2026-10-22
-  - '@tintinweb/pi-subagents@0.22.0' # Selected reload cleanup fix, published 2026-10-13
-  - pi-blackhole@0.5.15 # Latest selected release, published 2026-10-18
-  - '@juicesharp/rpiv-ask-user-question@2.12.0 || 2.13.9'
-  - '@juicesharp/rpiv-btw@2.12.0 || 2.13.9'
+  - '@plannotator/pi-extension@0.28.46' # Latest selected release, published 2026-11-02
+  - '@tintinweb/pi-subagents@0.22.1' # Latest selected release, published 2026-10-30
+  - pi-blackhole@0.5.16 # Latest selected release, published 2026-10-24
+  - '@juicesharp/rpiv-ask-user-question@2.12.0 || 2.13.9 || 2.15.0'
+  - '@juicesharp/rpiv-btw@2.12.0 || 2.13.9 || 2.15.0'
   - '@juicesharp/rpiv-config@2.12.0 || 2.13.9'
-  - '@juicesharp/rpiv-todo@2.13.9' # Added task overlay, published 2026-10-17
-  - '@earendil-works/pi-codemode@1.2.0 || 1.3.0 || 1.4.0'
-  - '@earendil-works/pi-mcp@1.2.0 || 1.3.0 || 1.4.0'
-  - '@earendil-works/pi-telemetry@1.2.0 || 1.3.0 || 1.4.0'
+  - '@juicesharp/rpiv-todo@2.13.9 || 2.15.0' # Latest selected release, published 2026-10-24
+  - '@earendil-works/pi-codemode@1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-mcp@1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-telemetry@1.2.0 || 1.3.0 || 1.4.0 || 1.5.0'
+  - '@earendil-works/pi-schema@1.5.0'

@@ -32,7 +32,7 @@ Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the term
 
 ### Prerequisites
 
-- [pi](https://github.com/earendil-works/pi) `1.2.0–1.4.x` — install it globally.
+- [pi](https://github.com/earendil-works/pi) `1.2.0–1.5.x` — install it globally.
 - A [Nerd Font](https://www.nerdfonts.com/) installed and configured in your
   terminal (recommended). The extensions degrade gracefully with ASCII fallbacks.
 
@@ -110,13 +110,13 @@ dependencies, pinned exactly in `package.json`:
 | Category | Bundled package | Version | Purpose | Repo |
 | --- | --- | ---: | --- | --- |
 | Compaction | `@ogulcancelik/pi-codex-compaction` | 0.1.6 | Native remote compaction for OpenAI Codex. | [repo](https://github.com/ogulcancelik/pi-extensions/tree/main/packages/pi-codex-compaction) |
-| Compaction | `pi-blackhole` | 0.5.15 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
+| Compaction | `pi-blackhole` | 0.5.16 | Conversation compaction and observational memory. | [repo](https://github.com/k0valik/pi-blackhole) |
 | Context | `@hypabolic/pi-hypa` | 1.2.0 | Command rewriting/compression plus Hypa-backed shell and file tools. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
-| Workflows | `@plannotator/pi-extension` | 0.28.26 | Interactive plan, code/PR review and agent Inbox. | [repo](https://github.com/backnotprop/plannotator) |
-| Workflows | `@tintinweb/pi-subagents` | 0.22.0 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.13.9 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.13.9 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
-| Interaction | `@juicesharp/rpiv-todo` | 2.13.9 | Agent task checklist with persistent live panel and `/todos`. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) |
+| Workflows | `@plannotator/pi-extension` | 0.28.46 | Interactive plan, code/PR review and agent Inbox. | [repo](https://github.com/backnotprop/plannotator) |
+| Workflows | `@tintinweb/pi-subagents` | 0.22.1 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
+| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.15.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
+| Interaction | `@juicesharp/rpiv-btw` | 2.15.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
+| Interaction | `@juicesharp/rpiv-todo` | 2.15.0 | Agent task checklist with persistent live panel and `/todos`. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) |
 
 `@juicesharp/rpiv-todo` adds a `todo` tool and a live checklist above the editor. It survives `/reload` and compaction; `/todos` prints the full list. On a fresh session it reports `No todos yet. Ask the agent to add some!`; the panel appears when the agent calls `todo`, so ask it to track multi-step work. This is separate from `/agents`, which lists active delegated subagents.
 
@@ -128,7 +128,7 @@ Hypa 1.2.0 includes the pane-freeze fix from 1.0.8 for cases where another windo
 and Hypa covers b-pi's overlapping shell rewriting and output-compression use.
 Install RTK separately if you need its RTK-specific filters or `/rtk` metrics.
 
-`@tintinweb/pi-subagents@0.22.0` requires Pi 1.1.0 or newer, fixes cloned
+`@tintinweb/pi-subagents@0.22.1` requires Pi 1.1.0 or newer, fixes cloned
 mention history on Pi 1.x, and cleans up timers on `/reload` and session
 replacement. Its default `smart` join mode now delivers background completions
 separately; choose `group` in `/agents` → Settings → Join mode to batch by parent
@@ -137,7 +137,7 @@ servers. Exclude them per agent with `exclude_extensions: builtin:mcp`,
 globally with `-builtin:mcp` in Pi's `extensions` setting, or disable them for
 a run with `--no-mcp`.
 
-Plannotator 0.28.26 auto-connects detected agents when you run
+Plannotator 0.28.46 auto-connects detected agents when you run
 `plannotator inbox`; disable with `PLANNOTATOR_INBOX_CONNECT=0`. It asks before
 adding notes to agent instruction files and shows the changes first. It also
 adds Pi session review events and a moving review checklist; those events do not
@@ -147,13 +147,13 @@ The package also ships the Plannotator skill at
 `skills/plannotator/SKILL.md` and the `/btw` system prompt at
 `prompts/btw-system.txt`.
 
-Plannotator 0.28.26 persists code-review viewed-file progress by default under
+Plannotator 0.28.46 persists code-review viewed-file progress by default under
 `~/.plannotator/review-progress` (or `PLANNOTATOR_DATA_DIR`). Records include
 repo-relative paths in plain text and are not pruned. Disable persistence with
 `PLANNOTATOR_REVIEW_PROGRESS=0` or `{ "reviewProgress": false }` in
 `~/.plannotator/config.json`.
 
-`pi-blackhole@0.5.15` is the official release, supports Pi 1.x, and includes the
+`pi-blackhole@0.5.16` is the official release, supports Pi 1.x, and includes the
 `skipForProviders` capability used to keep Codex and Blackhole compaction
 engines mutually exclusive. It also bounds path scanning so long encoded tool
 output cannot freeze compaction. Version 0.5.14 fixes minimal-tail compaction
@@ -282,7 +282,7 @@ account-specific checkpoint identity and credentials; switching accounts with
 a checkpoint from another account fails closed. Compaction uses the Codex
 Responses API, keeps its opaque checkpoint in Pi's native compaction entry,
 and fails closed if the remote request fails. On supported
-Pi versions (1.2.0–1.4.x), **Pi controls when** compaction runs: configure
+Pi versions (1.2.0–1.5.x), **Pi controls when** compaction runs: configure
 `compaction.reserveTokens` in `~/.pi/agent/settings.json` or project-local
 `.pi/settings.json`. Pi triggers when used tokens exceed
 `contextWindow - reserveTokens`; default reserve is 16,384 tokens. For a
@@ -294,7 +294,7 @@ set a model override with `reserveTokens: 190400` (70% of 272k).
 the upstream engine's fallback for Pi versions older than 0.84.4, outside
 b-pi's supported range. Other providers follow Pi's normal lifecycle.
 
-`pi-blackhole@0.5.15` includes the provider-aware skip capability. Compaction
+`pi-blackhole@0.5.16` includes the provider-aware skip capability. Compaction
 engine selection is coordinated automatically:
 Codex models use native Codex compaction; opaque checkpoints and provider-supplied
 developer/system items (including in-band tool declarations) survive replay. Every
