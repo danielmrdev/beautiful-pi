@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-02
+
 ### Changed
 
 - Support Pi 1.5.x; update development checks to Pi 1.5.0 and widen Pi peer ranges to `>=1.2.0 <1.6.0`.
