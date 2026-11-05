@@ -5,4 +5,6 @@ docs/
 
 # Pith ADE artifacts (memory/plans) and packed tarballs
 .pith/
+
+# Releases
 *.tgz

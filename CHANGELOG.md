@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-05
+
+### Added
+
+- Bundle `@pi-archimedes/sudo@2.13.0` with human-confirmed `sudo_exec`, a masked password prompt, and a guard against interactive `sudo` through the built-in `bash` tool.
+
 ## [0.3.2] - 2026-11-02
 
 ### Changed

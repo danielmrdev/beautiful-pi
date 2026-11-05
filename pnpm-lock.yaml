@@ -23,6 +23,9 @@ importers:
       '@ogulcancelik/pi-codex-compaction':
         specifier: 0.1.6
         version: 0.1.6(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)
+      '@pi-archimedes/sudo':
+        specifier: 2.13.0
+        version: 2.13.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
       '@plannotator/pi-extension':
         specifier: 0.28.46
         version: 0.28.46(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@shikijs/themes@3.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -435,6 +438,19 @@ packages:
       '@earendil-works/pi-ai': '*'
       '@earendil-works/pi-coding-agent': '*'
       '@earendil-works/pi-tui': '*'
+
+  '@pi-archimedes/core@2.13.0':
+    resolution: {integrity: sha512-mqZeWrMtxFrW9HxDCQcLI656WJOmWJPf+ahCT8TZxZYJ6+ASd3RSMHJ95QPQPw3A/VLE3L6CgrCiUQynmhO25Q==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.85.0'
+      '@earendil-works/pi-tui': '>=0.85.0'
+
+  '@pi-archimedes/sudo@2.13.0':
+    resolution: {integrity: sha512-7FJLHFpj5Fxr+wteAvi2G4THJj4jBBsGGDbdGYehsJRQtYXDNYD/Z4fuH0bvEKsJtOL4jYB8u03MHbTwl6wzig==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '>=0.99.0'
+      '@earendil-works/pi-tui': '>=0.99.0'
+      typebox: '>=1.1.0'
 
   '@pierre/diffs@1.5.2':
     resolution: {integrity: sha512-QVxIWQEnNoko22k63maERzozd29+FtaUNpRrZiw603WMe5R1mFSED+jMtPkcVP3SDYS1DWg5K7sa7sJbr3xkNQ==}
@@ -1663,6 +1679,18 @@ snapshots:
       '@earendil-works/pi-ai': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3)
       '@earendil-works/pi-tui': 1.5.0
+
+  '@pi-archimedes/core@2.13.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 1.5.0
+
+  '@pi-archimedes/sudo@2.13.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 1.5.0
+      '@pi-archimedes/core': 2.13.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)
+      typebox: 1.3.27
 
   '@pierre/diffs@1.5.2(@shikijs/themes@3.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:

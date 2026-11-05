@@ -38,19 +38,15 @@ Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the term
 
 ### Install the package
 
-#### From npm
-
-```bash
-pi install beautiful-pi
-```
-
-#### From source
+#### From Git
 
 ```bash
 git clone https://github.com/danielmrdev/beautiful-pi.git
 cd beautiful-pi
 pi install .
 ```
+
+Current distribution is Git-only; b-pi is not being published to npm for now.
 
 Then reload pi:
 
@@ -103,8 +99,8 @@ These extensions are part of beautiful-pi itself and are loaded by
 
 ### Included integrations
 
-One `pi install beautiful-pi` enables this curated package catalog automatically;
-no second package install is needed. Upstream packages remain normal npm
+Installing b-pi from Git enables this curated package catalog automatically;
+no second package install is needed. Upstream integrations remain normal npm
 dependencies, pinned exactly in `package.json`:
 
 | Category | Bundled package | Version | Purpose | Repo |
@@ -117,6 +113,7 @@ dependencies, pinned exactly in `package.json`:
 | Interaction | `@juicesharp/rpiv-ask-user-question` | 2.15.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
 | Interaction | `@juicesharp/rpiv-btw` | 2.15.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
 | Interaction | `@juicesharp/rpiv-todo` | 2.15.0 | Agent task checklist with persistent live panel and `/todos`. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) |
+| Security | `@pi-archimedes/sudo` | 2.13.0 | Human-confirmed `sudo_exec`, masked password prompt, and interactive-sudo bash guard. | [repo](https://github.com/archimedes-codes/pi-archimedes) |
 
 `@juicesharp/rpiv-todo` adds a `todo` tool and a live checklist above the editor. It survives `/reload` and compaction; `/todos` prints the full list. On a fresh session it reports `No todos yet. Ask the agent to add some!`; the panel appears when the agent calls `todo`, so ask it to track multi-step work. This is separate from `/agents`, which lists active delegated subagents.
 
@@ -507,14 +504,18 @@ tokens: `accent`, `border`, `borderAccent`, `borderMuted`, `muted`, `dim`,
 
 ---
 
-## Publishing
+## Releasing
 
 Use `package.json` as the b-pi version source. For each release, choose a
 SemVer bump, move `Unreleased` entries in `CHANGELOG.md` to a dated version
 section, and create an annotated `v<version>` tag after the release commit.
-Never reuse or move an existing release tag.
+Never reuse or move an existing release tag. Push the release commit and tag
+to the verified Git remote.
 
-Run release checks before publishing:
+Current distribution is Git-only. npm publication and pi.dev gallery submission
+are paused.
+
+Run release checks before tagging:
 
 ```bash
 pnpm typecheck     # TypeScript checks
@@ -542,11 +543,8 @@ the npm registry plus `script` (util-linux) and `tsx` on the host; it requires
 no OAuth, Codex, or quota credentials — provider requests are not part of
 release verification.
 
-```bash
-pnpm publish --access public  # requires npm account with 2FA
-```
-
-After npm publication, submit the package to the [pi.dev gallery](https://pi.dev/packages) using the npm package name and the public image URL declared in the package manifest. The gallery automatically detects `pi-package` keyword packages.
+Do not publish to npm or submit to the pi.dev gallery unless the user explicitly
+requests a change to this distribution policy.
 
 ---
 

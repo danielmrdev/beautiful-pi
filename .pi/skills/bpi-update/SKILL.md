@@ -68,6 +68,10 @@ Keep `CHANGELOG.md` in English. Put unreleased work under `Unreleased`, using
 short, user-facing bullets grouped under `Added`, `Changed`, `Fixed`, or
 `Removed`. Do not claim a fix until a test or verification step proves it.
 
+### Distribution policy
+
+Follow root `AGENTS.md` for the default release channel and distribution scope.
+
 For a release:
 
 1. Choose the bump from the actual diff; do not bump for unrelated metadata.

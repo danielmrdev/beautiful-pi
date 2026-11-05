@@ -197,6 +197,13 @@ or plugin lists, versions, installation, or architecture changes. Treat README
 sync as part of completion criteria; verify it against `package.json`, the `pi`
 manifest, and the current extension tree before reporting work done.
 
+## Release distribution
+
+Default b-pi distribution is Git because Daniel installs from Git. A release
+means version/changelog commit, annotated `v<version>` tag, and push of branch
+and tag to the verified remote. Do not publish to npm or submit to the pi.dev
+gallery unless Daniel explicitly requests it.
+
 ## Build and runtime
 
 - **No build step.** Pi loads `.ts` files directly at runtime.

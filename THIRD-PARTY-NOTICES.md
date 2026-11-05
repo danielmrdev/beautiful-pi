@@ -12,9 +12,10 @@ dependencies. They remain owned and maintained by their upstream authors.
 | [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
 | [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
 | [`@juicesharp/rpiv-todo`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo#readme) |
+| [`@pi-archimedes/sudo`](https://github.com/archimedes-codes/pi-archimedes) | 2.13.0 | Daniel Cherubini / danmademe | MIT | [README](https://github.com/archimedes-codes/pi-archimedes#readme) |
 | [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.16 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
-This table covers all eight direct integrations selected by the beautiful-pi
+This table covers all nine direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
 
@@ -33,7 +34,7 @@ with that package, which remains the authoritative notice for those packages.
 The MIT text below applies to `@ogulcancelik/pi-codex-compaction`,
 `@plannotator/pi-extension` (MIT option), `@tintinweb/pi-subagents`,
 `@juicesharp/rpiv-ask-user-question`, `@juicesharp/rpiv-btw`,
-`@juicesharp/rpiv-todo`, and `pi-blackhole`.
+`@juicesharp/rpiv-todo`, `@pi-archimedes/sudo`, and `pi-blackhole`.
 
 Copyright notices:
 
@@ -41,6 +42,7 @@ Copyright notices:
 - Copyright (c) 2025 backnotprop
 - Copyright (c) 2026 tintinweb
 - Copyright (c) 2026 juicesharp
+- Copyright (c) 2026 Daniel Cherubini and contributors
 - Copyright (c) 2026 k0valik
 
 ```text
