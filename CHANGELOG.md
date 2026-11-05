@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-05
+
+### Added
+
+- Add a `/bpi` toggle to hide provider quota usage independently from the rest of the footer.
+
+### Fixed
+
+- Apply quota visibility changes to the active footer immediately and skip quota requests while hidden.
+
 ## [0.4.0] - 2026-11-05
 
 ### Added

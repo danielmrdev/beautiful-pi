@@ -234,6 +234,7 @@ Default values in `extensions/settings/defaults.json`:
 |---|---|---|---|
 | showBanner | bool | true | Animated startup banner |
 | showFooter | bool | true | Stats bar + footer |
+| showQuotaUsage | bool | true | Provider quota usage in footer |
 | sessionTitle | bool | true | Auto-title from LLM |
 | toolsOneLine | bool | true | Compact tool output |
 | indentLevel | int | 4 | Rail indentation |

@@ -34,6 +34,7 @@ export interface BeautifulPiSettings {
   toolsOneLine: boolean;
   showBanner: boolean;
   showFooter: boolean;
+  showQuotaUsage: boolean;
   sessionTitle: boolean;
   syncHerdrPaneLabel: boolean;
 }
@@ -57,6 +58,7 @@ const DEFAULTS: BeautifulPiSettings = (() => {
       toolsOneLine: true,
       showBanner: true,
       showFooter: true,
+      showQuotaUsage: true,
       sessionTitle: true,
       syncHerdrPaneLabel: true,
     };

@@ -35,6 +35,7 @@ function buildTabs(s: BeautifulPiSettings): TabDef[] {
       items: [
         { id: "showBanner",    label: "Banner",          currentValue: b(s.showBanner),    values: ON_OFF },
         { id: "showFooter",    label: "Footer",          currentValue: b(s.showFooter),    values: ON_OFF },
+        { id: "showQuotaUsage", label: "Quota usage",     currentValue: b(s.showQuotaUsage), values: ON_OFF },
         { id: "sessionTitle",        label: "Session title",      currentValue: b(s.sessionTitle),        values: ON_OFF },
         { id: "syncHerdrPaneLabel",   label: "Herdr pane label",   currentValue: b(s.syncHerdrPaneLabel),   values: ON_OFF },
         { id: "toolsOneLine",        label: "Tools one-line",    currentValue: b(s.toolsOneLine),        values: ON_OFF },
@@ -62,6 +63,7 @@ function applyChange(current: BeautifulPiSettings, id: string, value: string): v
   switch (id) {
     case "showBanner":             current.showBanner             = value === "on"; break;
     case "showFooter":             current.showFooter             = value === "on"; break;
+    case "showQuotaUsage":          current.showQuotaUsage          = value === "on"; break;
     case "sessionTitle":           current.sessionTitle           = value === "on"; break;
     case "syncHerdrPaneLabel":     current.syncHerdrPaneLabel     = value === "on"; break;
     case "toolsOneLine":           current.toolsOneLine           = value === "on"; break;
@@ -224,7 +226,7 @@ export default function settingsExtension(pi: ExtensionAPI): void {
       };
     }, { overlay: true, overlayOptions: { anchor: "center", width: 62, maxHeight: "85%" } });
 
-    ctx.ui.notify("Run /reload to apply changes", "info");
+    ctx.ui.notify("Quota usage updates immediately; run /reload for other changes", "info");
   };
 
   pi.registerCommand("bpi", {

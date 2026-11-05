@@ -6,7 +6,7 @@
 
 import { test, describe, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, existsSync, rmSync, mkdtempSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -73,6 +73,19 @@ describe("saveSettings - stale file deletion", () => {
 
     saveSettings({ ...defaults, indentLevel: 2 });
     assert.ok(existsSync(userSettingsPath), "file should exist when a value differs");
+  });
+
+  test("persists disabled quota usage", async () => {
+    const { saveSettings, loadSettings } = await freshSettings();
+    const defaults = loadSettings();
+    assert.equal(defaults.showQuotaUsage, true);
+
+    saveSettings({ ...defaults, showQuotaUsage: false });
+
+    assert.equal(loadSettings().showQuotaUsage, false);
+    assert.deepEqual(JSON.parse(readFileSync(userSettingsPath, "utf-8")), {
+      showQuotaUsage: false,
+    });
   });
 });
 

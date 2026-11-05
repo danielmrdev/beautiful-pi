@@ -294,6 +294,7 @@ export default function (pi: ExtensionAPI) {
 		usageDisplayMode = "quota";
 		const settings = loadSettings();
 		if (!settings.showFooter) return;
+		const showQuotaUsage = () => loadSettings().showQuotaUsage;
 
 		if (
 			event.reason === "startup" ||
@@ -503,6 +504,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			function ensureOpenAIUsage(): void {
+				if (!showQuotaUsage()) return;
 				const isOpenAI = ctx.model?.provider === "openai-codex";
 				if (!isOpenAI) {
 					if (usageWasVisible) {
@@ -546,6 +548,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			function ensureOpenCodeGoUsage(): void {
+				if (!showQuotaUsage()) return;
 				const isOCG = ctx.model?.provider === "opencode-go";
 				if (!isOCG) {
 					if (ocgWasVisible) {
@@ -605,13 +608,14 @@ export default function (pi: ExtensionAPI) {
 					const icons = getIcons();
 					usageHitbox = null;
 					let usageLabel = "";
-					if (openAIUsage) {
+					const quotaUsageVisible = showQuotaUsage();
+					if (quotaUsageVisible && openAIUsage) {
 						usageLabel = renderUsageSegments(
 							openAIUsageSegments(openAIUsage, openAIUsageFetchedAt),
 							theme,
 							usageDisplayMode,
 						);
-					} else if (openCodeGoUsage) {
+					} else if (quotaUsageVisible && openCodeGoUsage) {
 						usageLabel = renderUsageSegments(
 							openCodeGoUsageSegments(openCodeGoUsage, openCodeGoUsageFetchedAt),
 							theme,

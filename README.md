@@ -360,12 +360,15 @@ Shows model, thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
 - OpenCode Go subscription usage (5h, 7d, 30d tiers) — shown when using an
   OpenCode Go model, fetched from the Zen `/zen/go/v1/usage` API with the
   provider key already configured in pi
+- Usage visibility: toggle `showQuotaUsage` in `/bpi` to hide quota usage without
+  hiding the rest of the footer. Applies immediately.
 - Usage pace view: press `Ctrl+Alt+U`, or click the usage segment in fullscreen
   TUI, to replace percentages/reset times with 12-cell pace bars. `━` marks
   consumed quota (accent; warning over pace, error when exhausted), `┄` the dim
   remaining quota and `·` the ideal linear limit for now (accent).
 
-**Toggle:** `showFooter` setting (default: `on`).
+**Toggles:** `showFooter` controls the whole footer; `showQuotaUsage` controls
+provider quota usage independently (both default: `on`).
 
 ---
 
@@ -440,6 +443,7 @@ rail colours. `/beautiful-pi` is retained as an alias:
 │                                                           │
 │  > Banner                        on                       │
 │    Footer                        on                       │
+│    Quota usage                   on                       │
 │    Session title                 on                       │
 │    Tools one-line                on                       │
 │    Indent level                  4                        │
@@ -456,8 +460,8 @@ rail colours. `/beautiful-pi` is retained as an alias:
 ╰──  ↑↓ navigate  Space/Enter change  Esc close  ───────────╯
 ```
 
-Changes persist to `~/.pi/agent/beautiful-pi.json`. Run `/reload` after
-changing toggles or colours.
+Changes persist to `~/.pi/agent/beautiful-pi.json`. Quota usage visibility
+applies immediately; run `/reload` after changing other toggles or colours.
 
 ---
 
@@ -483,6 +487,7 @@ differ from defaults are persisted. Delete the file to reset everything.
 |---|---|---|---|
 | `showBanner` | boolean | `true` | Show animated startup banner |
 | `showFooter` | boolean | `true` | Show stats bar + footer |
+| `showQuotaUsage` | boolean | `true` | Show provider quota usage in footer |
 | `sessionTitle` | boolean | `true` | Auto-generate session titles |
 | `toolsOneLine` | boolean | `true` | Compact one-line tool output |
 | `indentLevel` | integer | `4` | Rail indentation (spaces) |

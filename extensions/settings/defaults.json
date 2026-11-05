@@ -12,6 +12,7 @@
   "toolsOneLine": true,
   "showBanner": true,
   "showFooter": true,
+  "showQuotaUsage": true,
   "sessionTitle": true,
   "syncHerdrPaneLabel": true
 }
