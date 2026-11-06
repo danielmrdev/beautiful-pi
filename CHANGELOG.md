@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-06
+
+### Fixed
+
+- Sync Pi session names to herdr-app pane labels, including sessions resumed through `/resume`, `pi -c`, and `pi --session`.
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

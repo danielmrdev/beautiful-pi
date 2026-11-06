@@ -24,16 +24,17 @@ details live in the code.
 
 ## Herdr integration
 
-- **Session name** — the display name pi stores for the current session
+- **Session name** — the display name Pi stores for the current session
   (`setSessionName`/`getSessionName`), shown in the session selector and as
-  the widget's **session title** segment. The single source of truth mirrored
-  onto the herdr pane label.
-- **Pane label** — the persistent name herdr shows on a pane's border; set
-  via `herdr pane rename` and stored in herdr's session file. Distinct from
-  the terminal title: the label is herdr data, the title comes from the
-  terminal emulator.
-- **Terminal title** — the OSC title reported by the terminal emulator; pi
-  writes it with `ctx.ui.setTitle()`, herdr exposes it as `terminal_title`.
+  the widget's **session title** segment. It is mirrored to Herdr's
+  `pi.session` terminal label.
+- **Pane label** — the persistent name the `beautiful-herdr` layout shows in
+  its pane header. Set with `hc label $HC_TERMINAL_ID pi.session=<name>`;
+  `bh-pane` prioritizes this label over the terminal title. Legacy Herdr
+  sessions retain a `herdr pane rename` fallback.
+- **Terminal title** — the live title set by the terminal program; Pi writes
+  it with `ctx.ui.setTitle()`, and Herdr exposes it as `PaneInfo.title`. It is
+  distinct from the `pi.session` label used for session names.
 
 ## Quota usage
 

@@ -25,7 +25,7 @@ Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the term
 - OpenCode Go usage monitor
 - Codex account, pool, chain and preset routing with rate-limit failover
 - Provider-aware compaction coordination between Codex and Blackhole
-- Optional Herdr pane-label synchronisation
+- Optional Herdr pane-label synchronisation for Herdr-app and legacy Herdr
 - Custom settings TUI
 
 ## Installation
@@ -91,11 +91,11 @@ These extensions are part of beautiful-pi itself and are loaded by
 | **Assistant style** | Agent message rendering with thinking rail and text/error styling. |
 | **User style** | Rail-styled user messages. |
 | **Custom message style** | Rail-styled custom messages such as web-search and skill output. |
-| **Session title** | Generates a short title from the first user message, with truncation fallback. |
+| **Session title** | Generates a short title from the first user message, with truncation fallback; reapplies saved names to Herdr-app pane labels on session load. |
 | **Settings** | `/bpi` settings TUI; `/beautiful-pi` remains as a legacy alias. |
 | **Codex accounts** | `/codex` account, pool, chain and preset management, OAuth provider registration and rate-limit failover. |
 | **Compaction coordinator** | Selects native Codex compaction for Codex models and Blackhole for other providers. |
-| **Herdr pane sync** | Mirrors the Pi session name to the active Herdr pane when running inside Herdr. |
+| **Herdr pane sync** | Writes the Pi session name to Herdr-app's `pi.session` terminal label via `hc label`; falls back to the legacy Herdr CLI. |
 
 ### Included integrations
 
@@ -426,10 +426,14 @@ appears in:
 
 - The session selector sidebar
 - The terminal tab title
+- The active pane header in the `beautiful-herdr` Herdr-app layout
 - The stats bar (above editor)
 
-Falls back to simple truncation if the LLM call fails. The feature is
-configurable via `sessionTitle` setting (default: `on`).
+Saved names are restored to the active Herdr-app pane label on session start,
+including `/resume`, `pi -c` and `pi --session <id>`. Falls back to simple
+truncation if the LLM call fails. Title generation is configurable via
+`sessionTitle` (default: `on`); Herdr label sync is configurable via
+`syncHerdrPaneLabel` (default: `on`).
 
 ---
 
@@ -445,6 +449,7 @@ rail colours. `/beautiful-pi` is retained as an alias:
 │    Footer                        on                       │
 │    Quota usage                   on                       │
 │    Session title                 on                       │
+│    Herdr pane label              on                       │
 │    Tools one-line                on                       │
 │    Indent level                  4                        │
 │                                                           │
@@ -489,6 +494,7 @@ differ from defaults are persisted. Delete the file to reset everything.
 | `showFooter` | boolean | `true` | Show stats bar + footer |
 | `showQuotaUsage` | boolean | `true` | Show provider quota usage in footer |
 | `sessionTitle` | boolean | `true` | Auto-generate session titles |
+| `syncHerdrPaneLabel` | boolean | `true` | Sync session name to Herdr pane labels |
 | `toolsOneLine` | boolean | `true` | Compact one-line tool output |
 | `indentLevel` | integer | `4` | Rail indentation (spaces) |
 | `agentRailColor` | string | `"accent"` | Agent thinking rail colour token |
