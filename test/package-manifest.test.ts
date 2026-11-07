@@ -46,7 +46,7 @@ const expectedManifest = {
     "../@juicesharp/rpiv-ask-user-question/index.ts",
     "../@juicesharp/rpiv-btw/index.ts",
     "../@juicesharp/rpiv-todo/index.ts",
-    "../@pi-archimedes/sudo/src/index.ts",
+    "./extensions/sudo/index.ts",
     "./extensions/compaction/blackhole-engine.ts",
   ],
   skills: ["../@plannotator/pi-extension/skills/plannotator/SKILL.md"],
@@ -93,6 +93,19 @@ async function withEngineLayout(nested: boolean, check: (load: NodeRequire) => v
     rmSync(root, { recursive: true, force: true });
   }
 }
+
+test("sudo extension adapter registers sudo_exec in the main session", () => {
+  const entry = "./extensions/sudo/index.ts";
+  assert.ok(packageJson.pi.extensions.includes(entry));
+  const requireFromAdapter = createRequire(resolve(__dirname, "../", entry));
+  const registeredTools: string[] = [];
+  requireFromAdapter("./index.ts").default({
+    registerTool: (tool: { name: string }) => registeredTools.push(tool.name),
+    on() {},
+    registerCommand() {},
+  });
+  assert.ok(registeredTools.includes("sudo_exec"));
+});
 
 test("compaction engines reject stale shared dependencies", async () => {
   await withEngineLayout(false, (load) => {

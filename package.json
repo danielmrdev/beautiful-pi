@@ -1,6 +1,6 @@
 {
   "name": "beautiful-pi",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Beautiful UI extensions for pi \u2014 footer, banner, and Nerd Fonts support",
   "keywords": [
     "pi-package",
@@ -71,7 +71,7 @@
       "../@juicesharp/rpiv-ask-user-question/index.ts",
       "../@juicesharp/rpiv-btw/index.ts",
       "../@juicesharp/rpiv-todo/index.ts",
-      "../@pi-archimedes/sudo/src/index.ts",
+      "./extensions/sudo/index.ts",
       "./extensions/compaction/blackhole-engine.ts"
     ],
     "skills": [

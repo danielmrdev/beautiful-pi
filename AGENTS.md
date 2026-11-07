@@ -214,6 +214,17 @@ gallery unless Daniel explicitly requests it.
 - The package manager's `pi install` command resolves local paths, npm packages,
   and git repos.
 
+### Third-party Pi package integrations
+
+For upstream Pi packages listed in `dependencies`, add a local adapter under
+`extensions/<feature>/index.ts` that imports the package by name, then reference
+that adapter in `pi.extensions`. Avoid pointing the manifest directly at a
+sibling package path such as `../@scope/package/...`: local and symlink installs
+can keep dependencies under the package's own `node_modules`, so the sibling
+path silently misses the extension. Add a package-manifest regression test that
+resolves the dependency from the adapter and verifies the expected tool or
+registration is exposed.
+
 ## Commit conventions
 
 Follow conventional commits:
