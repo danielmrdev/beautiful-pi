@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-09
+
+### Added
+
+- Add `verbosity` setting (`high`/`medium`/`low`) controlling thinking visibility and tool output.
+- Render `ask_user_question` as a beautiful-pi tool with rail, indentation, spinner/✓ and Q&A output.
+
+### Changed
+
+- Low verbosity suppresses tool output and thinking turns, showing a live aggregate line during the agent turn and a one-line tool count at the end.
+
 ## [0.6.0] - 2026-11-09
 
 ### Changed
