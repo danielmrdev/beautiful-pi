@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-09
+
+### Fixed
+
+- Report active `pi-subagents` runs as `pi.state=working` in herdr-app so parent panes/mods do not show idle while delegated subagents are still working.
+
 ## [0.7.0] - 2026-11-09
 
 ### Added
