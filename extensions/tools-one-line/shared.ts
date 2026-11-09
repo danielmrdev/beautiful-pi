@@ -256,6 +256,7 @@ export function registerTool(pi: ExtensionAPI, name: ToolName, buildLabel: Label
 
     renderCall(args: any, theme: any, context: any) {
       const ctx = context as Ctx;
+      if (loadSettings().verbosity === "low") return new NullWidget();
       const intent = getIntent(args);
       // A tool is visually "done" if it truly completed OR if the agent is not
       // active (zombie tool from a resumed session — isPartial stays true forever).
@@ -267,6 +268,7 @@ export function registerTool(pi: ExtensionAPI, name: ToolName, buildLabel: Label
 
     renderResult(result: any, options: any, theme: any, context: any) {
       const ctx = context as Ctx;
+      if (loadSettings().verbosity === "low") return new NullWidget();
 
       if (!options.expanded) {
         // renderCall already shows the ✓/✕ done state.

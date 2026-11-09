@@ -314,6 +314,7 @@ function patchAssistantMessage(): void {
         contentContainer.addChild(createAgentMarkdownBlock(content.text, this.markdownTheme));
 
       } else if (content.type === "thinking" && content.thinking.trim()) {
+        if (settings.verbosity === "low") continue;
         const hasVisibleContentAfter = message.content
           .slice(i + 1)
           .some((c: any) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));

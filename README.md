@@ -498,6 +498,7 @@ differ from defaults are persisted. Delete the file to reset everything.
 | `sessionTitle` | boolean | `true` | Auto-generate session titles |
 | `syncHerdrPaneLabel` | boolean | `true` | Sync session name to Herdr pane labels |
 | `toolsOneLine` | boolean | `true` | Compact one-line tool output |
+| `verbosity` | string | `"medium"` | Output verbosity: `high` (show thinking + full tool output), `medium` (thinking untouched + one-line tools), `low` (suppress tools/thinking, live aggregate line) |
 | `indentLevel` | integer | `4` | Rail indentation (spaces) |
 | `agentRailColor` | string | `"accent"` | Agent thinking rail colour token |
 | `userRailColor` | string | `"mdLink"` | User message rail colour token |

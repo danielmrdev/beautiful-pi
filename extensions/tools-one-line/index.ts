@@ -12,7 +12,10 @@ import { patchGenericToolRenderer } from "./register-generic.ts";
 
 export default function toolsOneLineExtension(pi: ExtensionAPI): void {
   const settings = loadSettings();
-  if (!settings.toolsOneLine) return;
+  // High verbosity disables one-line tool output (full tool results).
+  if (settings.verbosity === "high") return;
+  // Medium/low force one-line infrastructure on (low uses it to suppress output).
+  if (settings.verbosity !== "low" && !settings.toolsOneLine) return;
 
   // Track whether the agent is currently running so renderLine can distinguish
   // live tools (show spinner) from zombie tools on resume (show as done).

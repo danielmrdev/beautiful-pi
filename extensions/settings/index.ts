@@ -33,6 +33,7 @@ function buildTabs(s: BeautifulPiSettings): TabDef[] {
     {
       label: "Layout",
       items: [
+        { id: "verbosity",     label: "Verbosity",       currentValue: s.verbosity,        values: ["high", "medium", "low"] },
         { id: "showBanner",    label: "Banner",          currentValue: b(s.showBanner),    values: ON_OFF },
         { id: "showFooter",    label: "Footer",          currentValue: b(s.showFooter),    values: ON_OFF },
         { id: "showQuotaUsage", label: "Quota usage",     currentValue: b(s.showQuotaUsage), values: ON_OFF },
@@ -61,6 +62,7 @@ function buildTabs(s: BeautifulPiSettings): TabDef[] {
 
 function applyChange(current: BeautifulPiSettings, id: string, value: string): void {
   switch (id) {
+    case "verbosity":              current.verbosity              = value as "high" | "medium" | "low"; break;
     case "showBanner":             current.showBanner             = value === "on"; break;
     case "showFooter":             current.showFooter             = value === "on"; break;
     case "showQuotaUsage":          current.showQuotaUsage          = value === "on"; break;

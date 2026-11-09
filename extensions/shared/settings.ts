@@ -21,6 +21,7 @@ function getDefaultsPath(): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface BeautifulPiSettings {
+  verbosity: "high" | "medium" | "low";
   agentRailColor: string;
   userRailColor: string;
   thinkingRailColor: string;
@@ -45,6 +46,7 @@ const DEFAULTS: BeautifulPiSettings = (() => {
   } catch {
     // Fallback if JSON file can't be resolved (e.g. different runtime path)
     return {
+      verbosity: "medium",
       agentRailColor: "accent",
       userRailColor: "mdLink",
       thinkingRailColor: "mdHeading",

@@ -1,4 +1,5 @@
 {
+  "verbosity": "medium",
   "agentRailColor": "accent",
   "userRailColor": "mdLink",
   "thinkingRailColor": "mdHeading",

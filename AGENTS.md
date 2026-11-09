@@ -248,6 +248,7 @@ Default values in `extensions/settings/defaults.json`:
 | showQuotaUsage | bool | true | Provider quota usage in footer |
 | sessionTitle | bool | true | Auto-title from LLM |
 | toolsOneLine | bool | true | Compact tool output |
+| verbosity | string | medium | Output verbosity: high/medium/low |
 | indentLevel | int | 4 | Rail indentation |
 | agentRailColor | string | "accent" | Agent thinking rail |
 | userRailColor | string | "mdLink" | User message rail |

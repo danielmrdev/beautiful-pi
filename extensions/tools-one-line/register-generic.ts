@@ -8,6 +8,9 @@
 
 import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { NullWidget, renderLine, type Ctx, type Theme } from "./shared.ts";
+import { loadSettings, safeFg } from "../shared/settings.ts";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { renderAskResult } from "../ask-user-question/view/transcript.ts";
 
 // Tools that beautiful-pi registers explicitly — leave their renderers alone.
 const HANDLED_TOOLS = new Set(["bash", "read", "write", "edit", "grep", "find", "ls"]);
@@ -59,7 +62,17 @@ export function patchGenericToolRenderer(): void {
 
   proto.getCallRenderer = function(this: any): AnyFn {
     if (HANDLED_TOOLS.has(this.toolName)) return orig.getCallRenderer.call(this);
+    if (loadSettings().verbosity === "low") return () => new NullWidget();
     const toolName = this.toolName;
+    if (toolName === "ask_user_question") {
+      return (args: any, theme: Theme, ctx: Ctx) => {
+        const headers = Array.isArray(args?.questions)
+          ? args.questions.map((q: any) => q?.header).filter(Boolean)
+          : [];
+        const label = headers.length > 0 ? `Ask ${headers.join(" · ")}` : "Ask";
+        return renderLine(ctx, theme, label, getIntent(args));
+      };
+    }
     return (args: any, theme: Theme, ctx: Ctx) =>
       renderLine(ctx, theme, prettyName(toolName), getIntent(args));
   };
@@ -68,6 +81,29 @@ export function patchGenericToolRenderer(): void {
 
   proto.getResultRenderer = function(this: any): AnyFn {
     if (HANDLED_TOOLS.has(this.toolName)) return orig.getResultRenderer.call(this);
+    if (loadSettings().verbosity === "low") return () => new NullWidget();
+    const toolName = this.toolName;
+    if (toolName === "ask_user_question") {
+      return (_result: any, opts: any, _theme: any, ctx: Ctx) => {
+        const native = renderAskResult(_result, ctx?.args, _theme, {
+          expanded: opts?.expanded ?? false,
+          isError: _result?.isError ?? false,
+        });
+        const indent = " ".repeat(loadSettings().indentLevel);
+        const rail = safeFg(_theme, loadSettings().toolRailColor, "success", "┃");
+        const prefix = `${indent}${rail} `;
+        const prefixWidth = visibleWidth(prefix);
+        return {
+          render(width: number) {
+            const innerWidth = Math.max(1, width - prefixWidth);
+            return native.render(innerWidth).map((line: string) => `${prefix}${line}`);
+          },
+          invalidate() {
+            native.invalidate?.();
+          },
+        };
+      };
+    }
     return (_result: any, opts: any, _theme: Theme, ctx: Ctx) => {
       if (!opts.expanded) {
         // renderCall already shows the done state; avoid a duplicate line.
