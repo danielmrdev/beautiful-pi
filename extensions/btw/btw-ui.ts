@@ -2,9 +2,8 @@
  * btw-ui — centered, bounded dialog overlay for /btw.
  *
  * Layout (grows with content, capped at 70% of terminal height):
- *   prompt   — user rail + user-message background
- *   answer   — agent rail + custom-message background
- *   footer   — key hints (dim)
+ *   prompt block — user rail + shared background; blank rows above and below
+ *   answer block — tools rail + shared background; spacer rows around answer and hints
  *
  * Natural height grows with history and answer content. Pi-tui centers the dialog;
  * if content exceeds the height cap, ↑/↓ scroll the clipped window.
@@ -23,7 +22,6 @@ import {
 	Key,
 	matchesKey,
 	type TUI,
-	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
@@ -38,7 +36,6 @@ const BTW_OVERLAY_OPTIONS: OverlayOptions = {
 	maxHeight: `${BTW_MAX_HEIGHT_RATIO * 100}%`,
 };
 
-const SIDE_PAD = "  "; // 2-col left gutter for footer
 const RAIL = "┃";
 const BTW_LITERAL = "/btw";
 const PENDING_GLYPH = "…";
@@ -131,16 +128,38 @@ export class BtwOverlayController implements Component {
 	render(width: number): string[] {
 		const safeWidth = Math.max(1, Math.floor(width));
 		const settings = loadSettings();
+		const messageBackground = "userMessageBg";
+		const promptStartLine = this.renderRoleLines(
+			" ",
+			safeWidth,
+			settings.userRailColor,
+			"accent",
+			messageBackground,
+			"selectedBg",
+			"text",
+			"text",
+		)[0] ?? "";
 		const promptLines = this.renderRoleLines(
 			`${BTW_LITERAL} ${this.question}`,
 			safeWidth,
 			settings.userRailColor,
 			"accent",
-			"userMessageBg",
+			messageBackground,
 			"selectedBg",
 			"userMessageText",
 			"text",
 		);
+		const promptEndLine = this.renderRoleLines(
+			" ",
+			safeWidth,
+			settings.userRailColor,
+			"accent",
+			messageBackground,
+			"selectedBg",
+			"text",
+			"text",
+		)[0] ?? "";
+		const promptBlock = [promptStartLine, ...promptLines, promptEndLine];
 
 		const responseText = this.mode === "pending" ? PENDING_GLYPH : this.mode === "error" ? this.error : this.answer;
 		const responseColor = this.mode === "pending" ? "warning" : this.mode === "error" ? "error" : "customMessageText";
@@ -148,39 +167,76 @@ export class BtwOverlayController implements Component {
 		const responseLines = this.renderRoleLines(
 			responseText,
 			safeWidth,
-			settings.agentRailColor,
-			"accent",
-			"customMessageBg",
+			settings.toolRailColor,
+			"success",
+			messageBackground,
 			"selectedBg",
 			responseColor,
 			responseFallback,
 		);
+		const separatorLine = this.renderRoleLines(
+			" ",
+			safeWidth,
+			settings.toolRailColor,
+			"success",
+			messageBackground,
+			"selectedBg",
+			"text",
+			"text",
+		)[0] ?? "";
 		const trimLines = this.trimmed
 			? this.renderRoleLines(
 					MSG_TRIMMED,
 					safeWidth,
-					settings.agentRailColor,
-					"accent",
-					"customMessageBg",
+					settings.toolRailColor,
+					"success",
+					messageBackground,
 					"selectedBg",
 					"warning",
 					"warning",
 				)
 			: [];
 
-		const footerAvail = Math.max(1, safeWidth - SIDE_PAD.length);
 		const footerParts: string[] = [];
 		if (this.mode !== "pending") footerParts.push(FOOTER_SCROLL);
 		if (this.history.length > 0) footerParts.push(FOOTER_CLEAR);
 		footerParts.push(FOOTER_DISMISS);
-		const footer =
-			SIDE_PAD + truncateToWidth(this.theme.fg("dim", footerParts.join(FOOTER_SEP)), footerAvail, "…", false);
-		const scrollable = [...responseLines, ...trimLines, "", footer];
+		const responseEndLine = this.renderRoleLines(
+			" ",
+			safeWidth,
+			settings.toolRailColor,
+			"success",
+			messageBackground,
+			"selectedBg",
+			"text",
+			"text",
+		)[0] ?? "";
+		const footerLines = this.renderRoleLines(
+			footerParts.join(FOOTER_SEP),
+			safeWidth,
+			settings.toolRailColor,
+			"success",
+			messageBackground,
+			"selectedBg",
+			"dim",
+			"dim",
+		);
+		const footerEndLine = this.renderRoleLines(
+			" ",
+			safeWidth,
+			settings.toolRailColor,
+			"success",
+			messageBackground,
+			"selectedBg",
+			"text",
+			"text",
+		)[0] ?? "";
+		const scrollable = [separatorLine, ...responseLines, ...trimLines, responseEndLine, ...footerLines, footerEndLine];
 
 		// Keep the user prompt visible while scrolling through a long response.
 		const termRows = (this.tui.terminal as { rows?: number }).rows ?? 24;
-		const maxRows = Math.max(promptLines.length + 1, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));
-		const maxResponseRows = Math.max(1, maxRows - promptLines.length);
+		const maxRows = Math.max(promptBlock.length + 1, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));
+		const maxResponseRows = Math.max(1, maxRows - promptBlock.length);
 		let visible = scrollable;
 		if (scrollable.length > maxResponseRows) {
 			const excess = scrollable.length - maxResponseRows;
@@ -189,7 +245,7 @@ export class BtwOverlayController implements Component {
 			visible = scrollable.slice(start, start + maxResponseRows);
 		}
 
-		return [...promptLines, ...visible];
+		return [...promptBlock, ...visible];
 	}
 
 	invalidate(): void {
