@@ -8,6 +8,10 @@
  * `/name`, RPC. On `session_start`, sync the loaded name (or clear a stale
  * label) for startup, resume, reload and fork.
  *
+ * It also reports `pi.state` for herdr-app: `blocked` while `ask_user_question`
+ * is open, and `working` while `@tintinweb/pi-subagents` are active, so
+ * herdr-app/mods don't show the parent pane as idle during delegated work.
+ *
  * Everything is fire-and-forget: Herdr is optional, so failures are silent.
  */
 
@@ -48,22 +52,58 @@ function syncSessionLabel(label: string | undefined, pi: ExtensionAPI): void {
   pi.exec(current.kind === "app" ? "hc" : "herdr", args).catch(() => {});
 }
 
+function setPiState(state: "blocked" | "working" | undefined, pi: ExtensionAPI): void {
+  const current = target();
+  if (!current || current.kind !== "app") return;
+  pi.exec("hc", ["label", current.id, `pi.state=${state ?? ""}`]).catch(() => {});
+}
+
 export default function herdrPaneSyncExtension(pi: ExtensionAPI): void {
+  let askBlocked = false;
+  const activeSubagents = new Set<string>();
+
+  const syncDerivedState = (): void => {
+    if (askBlocked) {
+      setPiState("blocked", pi);
+    } else if (activeSubagents.size > 0) {
+      setPiState("working", pi);
+    } else {
+      setPiState(undefined, pi);
+    }
+  };
+
+  const activateSubagent = (data: any): void => {
+    const id = typeof data?.id === "string" ? data.id : typeof data?.agentId === "string" ? data.agentId : undefined;
+    if (id) activeSubagents.add(id);
+    else activeSubagents.add(`anon:${activeSubagents.size}:${Date.now()}`);
+    syncDerivedState();
+  };
+
+  const deactivateSubagent = (data: any): void => {
+    const id = typeof data?.id === "string" ? data.id : typeof data?.agentId === "string" ? data.agentId : undefined;
+    if (id) activeSubagents.delete(id);
+    else activeSubagents.clear();
+    syncDerivedState();
+  };
+
   // Bridge ask_user_question's blocked state to Herdr's attention indicator.
   // - Legacy herdr TUI: emit "herdr:blocked" for herdr-agent-state.ts.
   // - herdr-app: set/clear the `pi.state` terminal label so mods (bh-agents)
   //   can surface the agent under "Needs you".
   pi.events.on(ASK_USER_BLOCKED_EVENT, (data: any) => {
-    const active = data?.active === true;
-    pi.events.emit("herdr:blocked", { active, label: "ask_user_question" });
-
-    const current = target();
-    if (!current || current.kind !== "app") return;
-    const args = active
-      ? ["label", current.id, "pi.state=blocked"]
-      : ["label", current.id, "pi.state="];
-    pi.exec("hc", args).catch(() => {});
+    askBlocked = data?.active === true;
+    pi.events.emit("herdr:blocked", { active: askBlocked, label: "ask_user_question" });
+    syncDerivedState();
   });
+
+  // Reflect pi-subagents activity as "working" in herdr-app so a parent pane
+  // isn't shown idle while delegated subagents are still running.
+  for (const event of ["subagents:started", "subagents:created"]) {
+    pi.events.on(event, activateSubagent);
+  }
+  for (const event of ["subagents:completed", "subagents:failed"]) {
+    pi.events.on(event, deactivateSubagent);
+  }
 
   if (!target()) return;
 
@@ -74,11 +114,17 @@ export default function herdrPaneSyncExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", () => {
+    activeSubagents.clear();
+    askBlocked = false;
+    syncDerivedState();
     const name = pi.getSessionName();
     syncSessionLabel(typeof name === "string" && name ? name : undefined, pi);
   });
 
   pi.on("session_shutdown", (event: any) => {
+    activeSubagents.clear();
+    askBlocked = false;
+    syncDerivedState();
     if (event?.reason === "quit") {
       syncSessionLabel(undefined, pi);
     }

@@ -97,7 +97,7 @@ These extensions are part of beautiful-pi itself and are loaded by
 | **Codex accounts** | `/codex` account, pool, chain and preset management, OAuth provider registration and rate-limit failover. |
 | **BTW** | `/btw <question>` shows prompt and answer on one shared background, with user-rail spacers around the prompt and tools-rail spacers around the answer and scroll/Esc hints; answer stays out of transcript and disk. |
 | **Compaction coordinator** | Selects native Codex compaction for Codex models and Blackhole for other providers. |
-| **Herdr pane sync** | Writes the Pi session name to Herdr-app's `pi.session` terminal label via `hc label`; falls back to the legacy Herdr CLI. |
+| **Herdr pane sync** | Writes the Pi session name to Herdr-app's `pi.session` terminal label via `hc label` and reports `pi.state` (`blocked` during `ask_user_question`, `working` while `pi-subagents` run) for herdr-app; falls back to the legacy Herdr CLI for session names. |
 
 ### Included integrations
 
@@ -589,7 +589,7 @@ extensions/
 │   ├── prompts/btw-system.txt  # Side-question system prompt
 │   └── LICENSE                 # Upstream MIT notice
 ├── herdr-pane-sync/
-│   └── index.ts                # Optional Herdr pane-label synchronisation
+│   └── index.ts                # Optional Herdr pane/session-state sync for herdr-app and legacy Herdr
 ├── banner/
 │   └── index.ts                # Startup banner (aboveEditor header)
 ├── footer/

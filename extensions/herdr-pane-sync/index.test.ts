@@ -131,6 +131,7 @@ describe("herdr pane sync extension", () => {
       pi.events.emit("session_start", { type: "session_start", reason });
 
       assert.deepEqual(pi.execCalls, [
+        ["hc", ["label", "t-app", "pi.state="]],
         ["hc", ["label", "t-app", "pi.session=🔧 Fix issue 28"]],
       ]);
     });
@@ -145,6 +146,7 @@ describe("herdr pane sync extension", () => {
     pi.events.emit("session_start", { type: "session_start", reason: "startup" });
 
     assert.deepEqual(pi.execCalls, [
+      ["hc", ["label", "t-app", "pi.state="]],
       ["hc", ["label", "t-app", "pi.session="]],
     ]);
   });
@@ -170,11 +172,12 @@ describe("herdr pane sync extension", () => {
     pi.events.emit("session_shutdown", { type: "session_shutdown", reason: "quit" });
 
     assert.deepEqual(pi.execCalls, [
+      ["hc", ["label", "t-app", "pi.state="]],
       ["hc", ["label", "t-app", "pi.session="]],
     ]);
   });
 
-  test("does not clear label on non-quit shutdown", async () => {
+  test("clears pi.state on non-quit shutdown", async () => {
     useHerdrApp();
     const pi = herdrPi();
     const mod = await import("./index.ts");
@@ -182,7 +185,9 @@ describe("herdr pane sync extension", () => {
 
     pi.events.emit("session_shutdown", { type: "session_shutdown", reason: "reload" });
 
-    assert.deepEqual(pi.execCalls, []);
+    assert.deepEqual(pi.execCalls, [
+      ["hc", ["label", "t-app", "pi.state="]],
+    ]);
   });
 
   test("clears legacy label on quit", async () => {
@@ -194,6 +199,39 @@ describe("herdr pane sync extension", () => {
 
     assert.deepEqual(pi.execCalls, [
       ["herdr", ["pane", "rename", "w9:pB", "--clear"]],
+    ]);
+  });
+
+  test("reports pi.state=working while subagents are active in herdr-app", async () => {
+    useHerdrApp();
+    const pi = herdrPi();
+    const mod = await import("./index.ts");
+    mod.default(pi);
+
+    pi.events.emit("subagents:started", { id: "sub-1" });
+    pi.events.emit("subagents:completed", { id: "sub-1" });
+
+    assert.deepEqual(pi.execCalls, [
+      ["hc", ["label", "t-app", "pi.state=working"]],
+      ["hc", ["label", "t-app", "pi.state="]],
+    ]);
+  });
+
+  test("keeps pi.state=blocked above subagent working state", async () => {
+    useHerdrApp();
+    const pi = herdrPi();
+    const mod = await import("./index.ts");
+    mod.default(pi);
+
+    const { ASK_USER_BLOCKED_EVENT } = await import("../ask-user-question/events.ts");
+    pi.events.emit(ASK_USER_BLOCKED_EVENT, { active: true });
+    pi.events.emit("subagents:started", { id: "sub-1" });
+    pi.events.emit(ASK_USER_BLOCKED_EVENT, { active: false });
+
+    assert.deepEqual(pi.execCalls, [
+      ["hc", ["label", "t-app", "pi.state=blocked"]],
+      ["hc", ["label", "t-app", "pi.state=blocked"]],
+      ["hc", ["label", "t-app", "pi.state=working"]],
     ]);
   });
 
