@@ -50,11 +50,19 @@ function syncSessionLabel(label: string | undefined, pi: ExtensionAPI): void {
 
 export default function herdrPaneSyncExtension(pi: ExtensionAPI): void {
   // Bridge ask_user_question's blocked state to Herdr's attention indicator.
-  // Herdr's pi agent-state integration listens for "herdr:blocked" and flips
-  // the pane to "blocked" (needs attention) while a questionnaire is open.
+  // - Legacy herdr TUI: emit "herdr:blocked" for herdr-agent-state.ts.
+  // - herdr-app: set/clear the `pi.state` terminal label so mods (bh-agents)
+  //   can surface the agent under "Needs you".
   pi.events.on(ASK_USER_BLOCKED_EVENT, (data: any) => {
     const active = data?.active === true;
     pi.events.emit("herdr:blocked", { active, label: "ask_user_question" });
+
+    const current = target();
+    if (!current || current.kind !== "app") return;
+    const args = active
+      ? ["label", current.id, "pi.state=blocked"]
+      : ["label", current.id, "pi.state="];
+    pi.exec("hc", args).catch(() => {});
   });
 
   if (!target()) return;

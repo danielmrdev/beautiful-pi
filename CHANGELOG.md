@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Vendor `/btw` inside beautiful-pi and remove its external npm dependency.
 - Show `/btw` prompt and answer in a centered dialog instead of a full-width panel.
+- Style `/btw` prompt and answer with user/agent rails and role-specific backgrounds, without a dialog frame.
 - Vendor `ask_user_question` inside beautiful-pi and remove its external npm dependency.
 - Bridge `ask_user_question` blocked state to Herdr's attention indicator (pane shows "blocked" while a questionnaire is open).
 

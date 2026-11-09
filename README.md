@@ -95,7 +95,7 @@ These extensions are part of beautiful-pi itself and are loaded by
 | **Session title** | Generates a short title from the first user message, with truncation fallback; reapplies saved names to Herdr-app pane labels on session load. |
 | **Settings** | `/bpi` settings TUI; `/beautiful-pi` remains as a legacy alias. |
 | **Codex accounts** | `/codex` account, pool, chain and preset management, OAuth provider registration and rate-limit failover. |
-| **BTW** | `/btw <question>` asks the active model in a centered, bounded dialog; answer stays out of transcript and disk. |
+| **BTW** | `/btw <question>` shows the prompt and answer as adjacent user/agent rail blocks with role-specific backgrounds; answer stays out of transcript and disk. |
 | **Compaction coordinator** | Selects native Codex compaction for Codex models and Blackhole for other providers. |
 | **Herdr pane sync** | Writes the Pi session name to Herdr-app's `pi.session` terminal label via `hc label`; falls back to the legacy Herdr CLI. |
 

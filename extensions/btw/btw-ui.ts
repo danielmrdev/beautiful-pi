@@ -2,14 +2,9 @@
  * btw-ui — centered, bounded dialog overlay for /btw.
  *
  * Layout (grows with content, capped at 70% of terminal height):
- *   banner (theme.bg stripe, padded to dialog width)  question header
- *   blank
- *   history  — "/btw <q>" (accent prefix + muted text), left-padded 2 cols
- *   echo     — "/btw <q>" (accent prefix + muted text), left-padded 2 cols
- *   blank
- *   answer   — body wrapped at width-2, left-padded 2 cols
- *   blank
- *   footer   — key hints (dim)                       sticky bottom
+ *   prompt   — user rail + user-message background
+ *   answer   — agent rail + custom-message background
+ *   footer   — key hints (dim)
  *
  * Natural height grows with history and answer content. Pi-tui centers the dialog;
  * if content exceeds the height cap, ↑/↓ scroll the clipped window.
@@ -32,7 +27,8 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
-import { type BtwTurn, userMessageText } from "./btw-messages.ts";
+import type { BtwTurn } from "./btw-messages.ts";
+import { loadSettings, safeBg, safeFg } from "../shared/settings.ts";
 
 const BTW_MAX_HEIGHT_RATIO = 0.7;
 
@@ -42,8 +38,8 @@ const BTW_OVERLAY_OPTIONS: OverlayOptions = {
 	maxHeight: `${BTW_MAX_HEIGHT_RATIO * 100}%`,
 };
 
-const SIDE_PAD = "  "; // 2-col left gutter for history, echo, footer
-const ANSWER_PAD = "    "; // 4-col left gutter for answer body (double of SIDE_PAD)
+const SIDE_PAD = "  "; // 2-col left gutter for footer
+const RAIL = "┃";
 const BTW_LITERAL = "/btw";
 const PENDING_GLYPH = "…";
 const FOOTER_SCROLL = "↑/↓ to scroll";
@@ -133,96 +129,94 @@ export class BtwOverlayController implements Component {
 	}
 
 	render(width: number): string[] {
-		const banner = this.renderBanner(width);
-		const historyLines = this.history.map((h) => this.historyLine(userMessageText(h.userMessage), width));
-		const answerLines = this.renderAnswer(width);
-		const footerAvail = Math.max(1, width - SIDE_PAD.length);
+		const safeWidth = Math.max(1, Math.floor(width));
+		const settings = loadSettings();
+		const promptLines = this.renderRoleLines(
+			`${BTW_LITERAL} ${this.question}`,
+			safeWidth,
+			settings.userRailColor,
+			"accent",
+			"userMessageBg",
+			"selectedBg",
+			"userMessageText",
+			"text",
+		);
+
+		const responseText = this.mode === "pending" ? PENDING_GLYPH : this.mode === "error" ? this.error : this.answer;
+		const responseColor = this.mode === "pending" ? "warning" : this.mode === "error" ? "error" : "customMessageText";
+		const responseFallback = this.mode === "pending" ? "warning" : this.mode === "error" ? "error" : "text";
+		const responseLines = this.renderRoleLines(
+			responseText,
+			safeWidth,
+			settings.agentRailColor,
+			"accent",
+			"customMessageBg",
+			"selectedBg",
+			responseColor,
+			responseFallback,
+		);
+		const trimLines = this.trimmed
+			? this.renderRoleLines(
+					MSG_TRIMMED,
+					safeWidth,
+					settings.agentRailColor,
+					"accent",
+					"customMessageBg",
+					"selectedBg",
+					"warning",
+					"warning",
+				)
+			: [];
+
+		const footerAvail = Math.max(1, safeWidth - SIDE_PAD.length);
 		const footerParts: string[] = [];
 		if (this.mode !== "pending") footerParts.push(FOOTER_SCROLL);
 		if (this.history.length > 0) footerParts.push(FOOTER_CLEAR);
 		footerParts.push(FOOTER_DISMISS);
 		const footer =
 			SIDE_PAD + truncateToWidth(this.theme.fg("dim", footerParts.join(FOOTER_SEP)), footerAvail, "…", false);
+		const scrollable = [...responseLines, ...trimLines, "", footer];
 
-		// Natural content: banner + blank + history + blank + answer [+ trim notice] + blank + footer
-		const natural: string[] = [
-			banner,
-			"",
-			...historyLines,
-			"",
-			...answerLines,
-			...(this.trimmed
-				? [
-						ANSWER_PAD +
-							truncateToWidth(
-								this.theme.fg("warning", MSG_TRIMMED),
-								Math.max(1, width - ANSWER_PAD.length),
-								"…",
-								false,
-							),
-					]
-				: []),
-			"",
-			footer,
-		];
-
-		// Clip to the dialog height cap; the default view favors newest content.
-		// ↑/↓ moves the clipped window to reveal older history.
+		// Keep the user prompt visible while scrolling through a long response.
 		const termRows = (this.tui.terminal as { rows?: number }).rows ?? 24;
-		const maxRows = Math.max(4, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));
-		if (natural.length <= maxRows) {
-			return natural;
+		const maxRows = Math.max(promptLines.length + 1, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));
+		const maxResponseRows = Math.max(1, maxRows - promptLines.length);
+		let visible = scrollable;
+		if (scrollable.length > maxResponseRows) {
+			const excess = scrollable.length - maxResponseRows;
+			if (this.scrollOffset > excess) this.scrollOffset = excess;
+			const start = excess - this.scrollOffset;
+			visible = scrollable.slice(start, start + maxResponseRows);
 		}
-		const excess = natural.length - maxRows;
-		if (this.scrollOffset > excess) this.scrollOffset = excess;
-		// scrollOffset=0 shows the BOTTOM (newest). Scrolling up reveals older history.
-		const start = excess - this.scrollOffset;
-		return natural.slice(start, start + maxRows);
+
+		return [...promptLines, ...visible];
 	}
 
 	invalidate(): void {
 		// no-op — render recomputes from state each cycle
 	}
 
-	private renderBanner(width: number): string {
-		const prefix = `${SIDE_PAD}${BTW_LITERAL} `;
-		const prefixWidth = visibleWidth(prefix);
-		const qAvail = Math.max(0, width - prefixWidth);
-		const qTrunc = truncateToWidth(this.question, qAvail, "…", false);
-		const raw = prefix + qTrunc;
-		const padded = raw + " ".repeat(Math.max(0, width - visibleWidth(raw)));
-		return this.theme.bg("customMessageBg", this.theme.fg("customMessageText", padded));
-	}
+	private renderRoleLines(
+		text: string,
+		width: number,
+		railColor: string,
+		railFallback: string,
+		background: string,
+		backgroundFallback: string,
+		textColor: string,
+		textFallback: string,
+	): string[] {
+		const safeWidth = Math.max(1, Math.floor(width));
+		const rail = safeFg(this.theme, railColor, railFallback, RAIL);
+		const prefix = `${rail} `;
+		const contentWidth = Math.max(1, safeWidth - visibleWidth(RAIL + " "));
 
-	private historyLine(question: string, width: number): string {
-		const qAvail = Math.max(0, width - SIDE_PAD.length);
-		const qClean = question.replace(/\s+/g, " ").trim();
-		const raw = `${BTW_LITERAL} ${qClean}`;
-		const trunc = truncateToWidth(raw, qAvail, "…", false);
-		return SIDE_PAD + this.theme.fg("muted", trunc);
-	}
-
-	private wrapBodyLines(text: string, bodyWidth: number, colorFn?: (s: string) => string): string[] {
-		const out: string[] = [];
-		for (const ln of text.split("\n")) {
-			const src = ln.length === 0 ? " " : ln;
-			const colored = colorFn ? colorFn(src) : src;
-			out.push(...wrapTextWithAnsi(colored, bodyWidth));
-		}
-		return out;
-	}
-
-	private renderAnswer(width: number): string[] {
-		const bodyWidth = Math.max(1, width - ANSWER_PAD.length);
-		const indent = (lines: string[]) => lines.map((l) => ANSWER_PAD + l);
-
-		if (this.mode === "pending") {
-			return indent([this.theme.fg("warning", PENDING_GLYPH)]);
-		}
-		if (this.mode === "error") {
-			return indent(this.wrapBodyLines(this.error, bodyWidth, (s) => this.theme.fg("error", s)));
-		}
-		return indent(this.wrapBodyLines(this.answer, bodyWidth));
+		return wrapTextWithAnsi(text, contentWidth).map((line) => {
+			const content = safeFg(this.theme, textColor, textFallback, line);
+			const raw = prefix + content;
+			const padded = raw + " ".repeat(Math.max(0, safeWidth - visibleWidth(raw)));
+			return safeBg(this.theme, background, backgroundFallback, padded);
+		});
 	}
 }
 
