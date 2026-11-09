@@ -9,8 +9,6 @@ const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"
 
 const expectedDependencies = {
   "@hypabolic/pi-hypa": "1.2.0",
-  "@juicesharp/rpiv-ask-user-question": "2.15.0",
-  "@juicesharp/rpiv-btw": "2.15.0",
   "@juicesharp/rpiv-todo": "2.15.0",
   "@ogulcancelik/pi-codex-compaction": "0.1.6",
   "@pi-archimedes/sudo": "2.13.0",
@@ -43,14 +41,13 @@ const expectedManifest = {
     "../@hypabolic/pi-hypa/extensions/index.ts",
     "../@plannotator/pi-extension/index.ts",
     "../@tintinweb/pi-subagents/src/index.ts",
-    "../@juicesharp/rpiv-ask-user-question/index.ts",
-    "../@juicesharp/rpiv-btw/index.ts",
+    "./extensions/ask-user-question/index.ts",
     "../@juicesharp/rpiv-todo/index.ts",
     "./extensions/sudo/index.ts",
     "./extensions/compaction/blackhole-engine.ts",
   ],
   skills: ["../@plannotator/pi-extension/skills/plannotator/SKILL.md"],
-  prompts: ["../@juicesharp/rpiv-btw/prompts/btw-system.txt"],
+  prompts: ["./extensions/btw/prompts/btw-system.txt"],
 };
 
 test("compaction engines load through package-local entry points", () => {
@@ -107,6 +104,45 @@ test("sudo extension adapter registers sudo_exec in the main session", () => {
   assert.ok(registeredTools.includes("sudo_exec"));
 });
 
+test("ask-user-question extension adapter registers ask_user_question in the main session", () => {
+  const entry = "./extensions/ask-user-question/index.ts";
+  assert.ok(packageJson.pi.extensions.includes(entry));
+  const requireFromAdapter = createRequire(resolve(__dirname, "../", entry));
+  const registeredTools: string[] = [];
+  requireFromAdapter("./index.ts").default({
+    registerTool: (tool: { name: string }) => registeredTools.push(tool.name),
+    on() {},
+    registerCommand() {},
+    exec() { return Promise.resolve({}); },
+    setActiveTools() {},
+    getSessionName() { return null; },
+    events: { on() {}, emit() {} },
+  });
+  assert.ok(registeredTools.includes("ask_user_question"));
+});
+
+test("btw extension is vendored and registers its command and hooks", () => {
+  assert.equal(packageJson.dependencies["@juicesharp/rpiv-btw"], undefined);
+  assert.ok(!packageJson.pi.extensions.some((entry: string) => entry.includes("@juicesharp/rpiv-btw")));
+  assert.deepEqual(packageJson.pi.prompts, ["./extensions/btw/prompts/btw-system.txt"]);
+
+  const aggregate = readFileSync(resolve(__dirname, "../extensions/index.ts"), "utf8");
+  assert.match(aggregate, /import btwExtension from ".\/btw\/index\.ts"/);
+  assert.match(aggregate, /btwExtension\(pi\)/);
+
+  const requireFromAdapter = createRequire(resolve(__dirname, "../extensions/btw/index.ts"));
+  const commands: string[] = [];
+  const events: string[] = [];
+  requireFromAdapter("./index.ts").default({
+    registerCommand(name: string) { commands.push(name); },
+    on(event: string) { events.push(event); },
+  });
+  assert.ok(commands.includes("btw"));
+  assert.ok(events.includes("message_end"));
+  assert.ok(events.includes("session_compact"));
+  assert.ok(events.includes("session_tree"));
+});
+
 test("compaction engines reject stale shared dependencies", async () => {
   await withEngineLayout(false, (load) => {
     for (const engine of ["codex-engine", "blackhole-engine"]) {
@@ -151,6 +187,15 @@ test("package catalog pins selected integrations and resources explicitly", () =
   }
 
   for (const entry of expectedManifest.extensions) {
+    if (entry.startsWith("./")) {
+      assert.equal(
+        existsSync(resolve(__dirname, "../", entry)),
+        true,
+        `missing package resource: ${entry}`,
+      );
+    }
+  }
+  for (const entry of expectedManifest.prompts) {
     if (entry.startsWith("./")) {
       assert.equal(
         existsSync(resolve(__dirname, "../", entry)),

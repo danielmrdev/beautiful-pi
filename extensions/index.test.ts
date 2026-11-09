@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { fakePi } from "./test-helpers.ts";
 
 describe("extension wiring", () => {
-  test("all 8 features wire without exception", async () => {
+  test("all extensions wire without exception", async () => {
     const pi = fakePi();
     const mod = await import("./index.ts");
     mod.default(pi);
@@ -17,5 +17,6 @@ describe("extension wiring", () => {
     // Settings registers /bpi + legacy /beautiful-pi
     assert.ok(pi.commands.has("bpi"), "/bpi command registered");
     assert.ok(pi.commands.has("beautiful-pi"), "/beautiful-pi alias registered");
+    assert.ok(pi.commands.has("btw"), "/btw command registered");
   });
 });

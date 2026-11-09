@@ -42,8 +42,6 @@
     "@pi-archimedes/sudo": "2.13.0",
     "@plannotator/pi-extension": "0.28.46",
     "@tintinweb/pi-subagents": "0.22.1",
-    "@juicesharp/rpiv-ask-user-question": "2.15.0",
-    "@juicesharp/rpiv-btw": "2.15.0",
     "@juicesharp/rpiv-todo": "2.15.0",
     "pi-blackhole": "0.5.16"
   },
@@ -68,8 +66,7 @@
       "../@hypabolic/pi-hypa/extensions/index.ts",
       "../@plannotator/pi-extension/index.ts",
       "../@tintinweb/pi-subagents/src/index.ts",
-      "../@juicesharp/rpiv-ask-user-question/index.ts",
-      "../@juicesharp/rpiv-btw/index.ts",
+      "./extensions/ask-user-question/index.ts",
       "../@juicesharp/rpiv-todo/index.ts",
       "./extensions/sudo/index.ts",
       "./extensions/compaction/blackhole-engine.ts"
@@ -78,7 +75,7 @@
       "../@plannotator/pi-extension/skills/plannotator/SKILL.md"
     ],
     "prompts": [
-      "../@juicesharp/rpiv-btw/prompts/btw-system.txt"
+      "./extensions/btw/prompts/btw-system.txt"
     ],
     "image": "https://raw.githubusercontent.com/danielmrdev/beautiful-pi/main/assets/beautiful-pi-screenshot.png"
   }

@@ -12,6 +12,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { ASK_USER_BLOCKED_EVENT } from "../ask-user-question/events.ts";
 import { loadSettings } from "../shared/settings.ts";
 
 // Env is read lazily so the module is testable and never captures stale
@@ -48,6 +49,14 @@ function syncSessionLabel(label: string | undefined, pi: ExtensionAPI): void {
 }
 
 export default function herdrPaneSyncExtension(pi: ExtensionAPI): void {
+  // Bridge ask_user_question's blocked state to Herdr's attention indicator.
+  // Herdr's pi agent-state integration listens for "herdr:blocked" and flips
+  // the pane to "blocked" (needs attention) while a questionnaire is open.
+  pi.events.on(ASK_USER_BLOCKED_EVENT, (data: any) => {
+    const active = data?.active === true;
+    pi.events.emit("herdr:blocked", { active, label: "ask_user_question" });
+  });
+
   if (!target()) return;
 
   pi.on("session_info_changed", (event: any) => {

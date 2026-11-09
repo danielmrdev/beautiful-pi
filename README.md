@@ -27,6 +27,7 @@ Beautiful UI extensions for [pi](https://github.com/earendil-works/pi), the term
 - Provider-aware compaction coordination between Codex and Blackhole
 - Optional Herdr pane-label synchronisation for Herdr-app and legacy Herdr
 - Custom settings TUI
+- Ephemeral `/btw` side questions using the active model and conversation context
 
 ## Installation
 
@@ -94,6 +95,7 @@ These extensions are part of beautiful-pi itself and are loaded by
 | **Session title** | Generates a short title from the first user message, with truncation fallback; reapplies saved names to Herdr-app pane labels on session load. |
 | **Settings** | `/bpi` settings TUI; `/beautiful-pi` remains as a legacy alias. |
 | **Codex accounts** | `/codex` account, pool, chain and preset management, OAuth provider registration and rate-limit failover. |
+| **BTW** | `/btw <question>` asks the active model in a centered, bounded dialog; answer stays out of transcript and disk. |
 | **Compaction coordinator** | Selects native Codex compaction for Codex models and Blackhole for other providers. |
 | **Herdr pane sync** | Writes the Pi session name to Herdr-app's `pi.session` terminal label via `hc label`; falls back to the legacy Herdr CLI. |
 
@@ -110,14 +112,14 @@ dependencies, pinned exactly in `package.json`:
 | Context | `@hypabolic/pi-hypa` | 1.2.0 | Command rewriting/compression plus Hypa-backed shell and file tools. | [repo](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) |
 | Workflows | `@plannotator/pi-extension` | 0.28.46 | Interactive plan, code/PR review and agent Inbox. | [repo](https://github.com/backnotprop/plannotator) |
 | Workflows | `@tintinweb/pi-subagents` | 0.22.1 | Subagents, parallel execution and workflow orchestration. | [repo](https://github.com/tintinweb/pi-subagents) |
-| Interaction | `@juicesharp/rpiv-ask-user-question` | 2.15.0 | Structured questionnaires for user input. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) |
-| Interaction | `@juicesharp/rpiv-btw` | 2.15.0 | `/btw` side questions without polluting the main conversation. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) |
 | Interaction | `@juicesharp/rpiv-todo` | 2.15.0 | Agent task checklist with persistent live panel and `/todos`. | [repo](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) |
 | Security | `@pi-archimedes/sudo` | 2.13.0 | Human-confirmed `sudo_exec`, masked password prompt, and interactive-sudo bash guard. | [repo](https://github.com/archimedes-codes/pi-archimedes) |
 
+`ask_user_question` and `/btw` are vendored inside `extensions/`; both retain their upstream MIT notices. See `THIRD-PARTY-NOTICES.md`.
+
 `@juicesharp/rpiv-todo` adds a `todo` tool and a live checklist above the editor. It survives `/reload` and compaction; `/todos` prints the full list. On a fresh session it reports `No todos yet. Ask the agent to add some!`; the panel appears when the agent calls `todo`, so ask it to track multi-step work. This is separate from `/agents`, which lists active delegated subagents.
 
-`/btw` requires an interactive TUI, an active model, and working credentials; it is unavailable in `--print` and RPC modes.
+`/btw <question>` uses the active model with a read-only snapshot of the conversation, then shows its answer in an overlay. Side questions never enter the main transcript or persist to disk. It requires an interactive TUI, active model, and working credentials; unavailable in `--print` and RPC modes.
 
 Hypa 1.2.0 includes the pane-freeze fix from 1.0.8 for cases where another window or cube peer views a pane. The Pi extension prefers a native `hypa` already on `PATH`; it can install a `~/.local/bin/hypa` shim when none exists. A separate global Hypa install must be updated independently (`hypa update`).
 
@@ -142,7 +144,7 @@ change the prompt or tool list.
 
 The package also ships the Plannotator skill at
 `skills/plannotator/SKILL.md` and the `/btw` system prompt at
-`prompts/btw-system.txt`.
+`extensions/btw/prompts/btw-system.txt`.
 
 Plannotator 0.28.46 persists code-review viewed-file progress by default under
 `~/.plannotator/review-progress` (or `PLANNOTATOR_DATA_DIR`). Records include
@@ -576,6 +578,15 @@ extensions/
 │   ├── coordinator.ts          # Codex/Blackhole engine coordination
 │   ├── codex-engine.ts         # Load pinned Codex compaction dependency
 │   └── blackhole-engine.ts     # Load pinned Blackhole dependency
+├── btw/
+│   ├── index.ts                # `/btw` command and lifecycle hooks
+│   ├── btw.ts                  # Side-question execution and context assembly
+│   ├── btw-budget.ts           # Context/history budgeting
+│   ├── btw-messages.ts         # Message helpers
+│   ├── btw-ui.ts               # Ephemeral overlay
+│   ├── pi-compat.ts            # Pi host-version compatibility
+│   ├── prompts/btw-system.txt  # Side-question system prompt
+│   └── LICENSE                 # Upstream MIT notice
 ├── herdr-pane-sync/
 │   └── index.ts                # Optional Herdr pane-label synchronisation
 ├── banner/

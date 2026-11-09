@@ -12,7 +12,7 @@ if (!installedDir) {
 
 const fromPackage = createRequire(join(installedDir, "package.json"));
 const [btw, todo, helpers] = await Promise.all([
-  import(pathToFileURL(fromPackage.resolve("@juicesharp/rpiv-btw/index.ts")).href),
+  import(pathToFileURL(join(installedDir, "extensions/btw/index.ts")).href),
   import(pathToFileURL(fromPackage.resolve("@juicesharp/rpiv-todo/index.ts")).href),
   import(pathToFileURL(join(installedDir, "extensions/test-helpers.ts")).href),
 ]);

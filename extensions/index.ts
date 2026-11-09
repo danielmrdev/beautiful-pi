@@ -10,11 +10,13 @@ import sessionTitleExtension from "./session-title/index.ts";
 import herdrPaneSyncExtension from "./herdr-pane-sync/index.ts";
 import codexAccountsExtension from "./codex-accounts/index.ts";
 import compactionCoordinator from "./compaction/index.ts";
+import btwExtension from "./btw/index.ts";
 
 export default function (pi: ExtensionAPI) {
   settingsExtension(pi);         // register /bpi (+ /beautiful-pi alias)
   codexAccountsExtension(pi);    // register /codex account + legacy migration
   compactionCoordinator(pi);     // keep compaction engines provider-aware
+  btwExtension(pi);
   sessionTitleExtension(pi);
   herdrPaneSyncExtension(pi);
   bannerExtension(pi);

@@ -9,13 +9,11 @@ dependencies. They remain owned and maintained by their upstream authors.
 | [`@hypabolic/pi-hypa`](https://github.com/Hypabolic/Hypa/tree/main/packages/pi-hypa) | 1.2.0 | atomic-mg / Hypabolic | FSL-1.1-ALv2 | [README](https://github.com/Hypabolic/Hypa#readme) |
 | [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator/tree/main/apps/pi-extension) | 0.28.46 | backnotprop | MIT OR Apache-2.0 | [README](https://github.com/backnotprop/plannotator) |
 | [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) | 0.22.1 | tintinweb | MIT | [README](https://github.com/tintinweb/pi-subagents#readme) |
-| [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question#readme) |
-| [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw#readme) |
 | [`@juicesharp/rpiv-todo`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo) | 2.15.0 | juicesharp | MIT | [README](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo#readme) |
 | [`@pi-archimedes/sudo`](https://github.com/archimedes-codes/pi-archimedes) | 2.13.0 | Daniel Cherubini / danmademe | MIT | [README](https://github.com/archimedes-codes/pi-archimedes#readme) |
 | [`pi-blackhole`](https://github.com/k0valik/pi-blackhole) | 0.5.16 | k0valik | MIT | [README](https://github.com/k0valik/pi-blackhole#readme) |
 
-This table covers all nine direct integrations selected by the beautiful-pi
+This table covers the seven direct integrations selected by the beautiful-pi
 package catalog. Their exact versions, authors, repositories, and licenses are
 listed above; the applicable direct-package license text is reproduced below.
 
@@ -26,6 +24,22 @@ Codex compaction. The MIT notice below applies to the upstream package.
 Transitive npm dependencies are not redistributed in the beautiful-pi tarball.
 Pi's npm install keeps each transitive package's own metadata and license file
 with that package, which remains the authoritative notice for those packages.
+
+
+## Vendored code
+
+`extensions/btw/` is vendored from
+[`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw)
+v2.15.0 (MIT, copyright (c) 2026 juicesharp) and adapted to run inside
+beautiful-pi without an external npm dependency. The original `LICENSE` file is
+preserved in that directory.
+
+`extensions/ask-user-question/` is vendored from
+[`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
+v2.15.0 (MIT, copyright (c) 2026 juicesharp) and adapted to run inside
+beautiful-pi without an external npm dependency. The original `LICENSE` file is
+preserved in that directory. `@juicesharp/rpiv-config` helpers used by the
+upstream package were inlined into `extensions/ask-user-question/config.ts`.
 
 ## License texts
 

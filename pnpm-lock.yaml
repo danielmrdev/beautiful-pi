@@ -11,12 +11,6 @@ importers:
       '@hypabolic/pi-hypa':
         specifier: 1.2.0
         version: 1.2.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)
-      '@juicesharp/rpiv-ask-user-question':
-        specifier: 2.15.0
-        version: 2.15.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
-      '@juicesharp/rpiv-btw':
-        specifier: 2.15.0
-        version: 2.15.0(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)
       '@juicesharp/rpiv-todo':
         specifier: 2.15.0
         version: 2.15.0(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
@@ -392,24 +386,6 @@ packages:
 
   '@joplin/turndown-plugin-gfm@1.0.68':
     resolution: {integrity: sha512-m8DfAQNC/V7g0j5H6Jv60WhekBBjodD+zTPGrU+g2m+ux/z8ZX07KQIl6kaAmbKwfvsQhC04op52g63I78sVgg==}
-
-  '@juicesharp/rpiv-ask-user-question@2.15.0':
-    resolution: {integrity: sha512-Gm6de5IZF52BaSeh9dnDqJBn821Z5XfJkCmhkCmqTzvNv3SCpSv1mA4Gj5VBcfrSe+xTtWSVQzJwIqJFQHH3Lg==}
-    peerDependencies:
-      '@earendil-works/pi-coding-agent': '*'
-      '@earendil-works/pi-tui': '*'
-      '@juicesharp/rpiv-i18n': '*'
-      typebox: '*'
-    peerDependenciesMeta:
-      '@juicesharp/rpiv-i18n':
-        optional: true
-
-  '@juicesharp/rpiv-btw@2.15.0':
-    resolution: {integrity: sha512-lJ1uelu5id+aQctYdpi6Plk7JQu5QkwNDqkTPgzmnxZAktgyI8JlNvDnRiGOUUnLHjLxvqHZzPmugYyJmUG/4Q==}
-    peerDependencies:
-      '@earendil-works/pi-ai': '*'
-      '@earendil-works/pi-coding-agent': '*'
-      '@earendil-works/pi-tui': '*'
 
   '@juicesharp/rpiv-config@2.15.0':
     resolution: {integrity: sha512-S2BAGX4dJjQ2AyNYOEjC6ha04p9f6CdEfmtxpdxzSKrfDMwqIvOjjO9HiHc1IPY7jDY1q2Q8cGCtpIZWV6Y8NQ==}
@@ -1646,19 +1622,6 @@ snapshots:
   '@isaacs/nonrecursive-glob-match@1.0.3': {}
 
   '@joplin/turndown-plugin-gfm@1.0.68': {}
-
-  '@juicesharp/rpiv-ask-user-question@2.15.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)':
-    dependencies:
-      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-tui': 1.5.0
-      '@juicesharp/rpiv-config': 2.15.0(typebox@1.3.27)
-      typebox: 1.3.27
-
-  '@juicesharp/rpiv-btw@2.15.0(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@1.5.0)':
-    dependencies:
-      '@earendil-works/pi-ai': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/signature-v4@5.7.4)(ws@8.21.1)(zod@4.4.3)
-      '@earendil-works/pi-tui': 1.5.0
 
   '@juicesharp/rpiv-config@2.15.0(typebox@1.3.27)':
     dependencies:
